@@ -1,49 +1,32 @@
 'use client'
 
 import { useMemo } from 'react'
-import type { CustomModel, Provider } from '../../api-config'
-import { PRESET_PROVIDERS, getProviderKey } from '../../api-config'
+import type { UnifiedModelType } from '@/lib/ai-registry/types'
+import { resolveSingleModelSelection } from '@/lib/ai-registry/media-model-selection'
+import { encodeModelKey, parseModelKey, type CustomModel, type Provider } from '../../api-config'
+import { isPresetComingSoonModelKey } from '../../api-config/types'
+import type { DefaultModels } from '../../api-config/selectors'
+
+export interface ModelSlotOption {
+  modelKey: string
+  name: string
+  provider: string
+  providerName: string
+  providerHasKey: boolean
+  comingSoon: boolean
+}
+
+export interface ModelSlotSelection {
+  /** The model this slot currently uses; empty when the slot is unused. */
+  modelKey: string
+  /** Legacy configs may hold several models for one slot; the user must re-pick. */
+  ambiguous: boolean
+}
 
 interface UseApiConfigFiltersParams {
   providers: Provider[]
   models: CustomModel[]
-}
-
-interface EnabledModelOption extends CustomModel {
-  providerName: string
-}
-
-const DYNAMIC_PROVIDER_PREFIXES = ['gemini-compatible', 'openai-compatible']
-const ALWAYS_SHOW_PROVIDERS: string[] = []
-/** 完全不在 UI 中展示的 provider（既不在主列表，也不在折叠区） */
-const HIDDEN_PROVIDER_KEYS = new Set(['siliconflow'])
-const PROVIDER_MODEL_TYPES: Array<'llm' | 'image' | 'video' | 'audio' | 'lipsync'> = ['llm', 'image', 'video', 'audio', 'lipsync']
-const DEFAULT_AUDIO_EXCLUDED_MODEL_IDS = new Set([
-  'qwen-voice-design',
-])
-const MODEL_PROVIDER_KEYS = [
-  'ark',
-  'google',
-  'bailian',
-  'openrouter',
-  'minimax',
-  'vidu',
-  'fal',
-  'gemini-compatible',
-  'openai-compatible',
-]
-
-function isProviderModelType(type: CustomModel['type']): type is 'llm' | 'image' | 'video' | 'audio' | 'lipsync' {
-  return PROVIDER_MODEL_TYPES.includes(type as 'llm' | 'image' | 'video' | 'audio' | 'lipsync')
-}
-
-function isDefaultModelType(type: CustomModel['type']): type is 'llm' | 'image' | 'video' | 'audio' | 'lipsync' {
-  return type === 'llm' || type === 'image' || type === 'video' || type === 'audio' || type === 'lipsync'
-}
-
-function isAudioDefaultCandidate(model: CustomModel): boolean {
-  if (model.type !== 'audio') return true
-  return !DEFAULT_AUDIO_EXCLUDED_MODEL_IDS.has(model.modelId)
+  defaultModels: DefaultModels
 }
 
 function hasProviderApiKey(provider: Provider | undefined): boolean {
@@ -53,84 +36,63 @@ function hasProviderApiKey(provider: Provider | undefined): boolean {
   return apiKey.length > 0
 }
 
-export function useApiConfigFilters({
-  providers,
-  models,
-}: UseApiConfigFiltersParams) {
-  const modelProviderKeys = useMemo(() => {
-    const keys = new Set<string>(MODEL_PROVIDER_KEYS)
-    models.forEach((model) => {
-      if (!isProviderModelType(model.type)) return
-      keys.add(getProviderKey(model.provider))
-    })
-    return keys
-  }, [models])
-
-  const isPresetProvider = (providerId: string) => {
-    return PRESET_PROVIDERS.some(
-      (provider) => provider.id === getProviderKey(providerId),
-    )
-  }
+export function useApiConfigFilters({ providers, models, defaultModels }: UseApiConfigFiltersParams) {
+  const providersById = useMemo(
+    () => new Map(providers.map((provider) => [provider.id, provider] as const)),
+    [providers],
+  )
 
   const modelProviders = useMemo(() => {
-    return providers.filter((provider) => {
-      const providerKey = getProviderKey(provider.id)
-      if (HIDDEN_PROVIDER_KEYS.has(providerKey)) return false
-      const isCustomProvider = !isPresetProvider(provider.id)
-      const isDynamicProvider =
-        DYNAMIC_PROVIDER_PREFIXES.includes(providerKey) && provider.id.includes(':')
-
-      return (
-        (isCustomProvider && modelProviderKeys.has(providerKey)) ||
-        modelProviderKeys.has(providerKey) ||
-        ALWAYS_SHOW_PROVIDERS.includes(providerKey) ||
-        isDynamicProvider
-      )
-    })
-  }, [modelProviderKeys, providers])
-
-  const enabledModelsByType = useMemo(() => {
-    const grouped: Record<'llm' | 'image' | 'video' | 'audio' | 'lipsync' | 'voicedesign', EnabledModelOption[]> = {
-      llm: [],
-      image: [],
-      video: [],
-      audio: [],
-      lipsync: [],
-      voicedesign: [],
-    }
-
-    const providersById = new Map(providers.map((provider) => [provider.id, provider] as const))
-
-    for (const model of models) {
-      if (!model.enabled) continue
-      if (!isDefaultModelType(model.type)) continue
-      const provider = providersById.get(model.provider)
-      if (!hasProviderApiKey(provider)) continue
-
-      const option: EnabledModelOption = {
-        ...model,
-        providerName: provider?.name || model.provider,
-      }
-
-      // Voice design models (audio type but excluded from TTS)
-      if (model.type === 'audio' && DEFAULT_AUDIO_EXCLUDED_MODEL_IDS.has(model.modelId)) {
-        grouped.voicedesign.push(option)
-        continue
-      }
-
-      // Normal audio default candidate check
-      if (!isAudioDefaultCandidate(model)) continue
-
-      grouped[model.type].push(option)
-    }
-
-    return grouped
+    const modelProviderIds = new Set(models.map((model) => model.provider))
+    return providers.filter((provider) => modelProviderIds.has(provider.id))
   }, [models, providers])
+
+  /** Every model of a type, providers holding a key first so the pickable ones lead. */
+  const slotOptionsByType = useMemo(() => {
+    const grouped = new Map<UnifiedModelType, ModelSlotOption[]>()
+    for (const model of models) {
+      const provider = providersById.get(model.provider)
+      const option: ModelSlotOption = {
+        modelKey: model.modelKey,
+        name: model.name,
+        provider: model.provider,
+        providerName: provider?.name || model.provider,
+        providerHasKey: hasProviderApiKey(provider),
+        comingSoon: isPresetComingSoonModelKey(model.modelKey),
+      }
+      const bucket = grouped.get(model.type)
+      if (bucket) bucket.push(option)
+      else grouped.set(model.type, [option])
+    }
+    for (const options of grouped.values()) {
+      options.sort((left, right) => Number(right.providerHasKey) - Number(left.providerHasKey))
+    }
+    return grouped
+  }, [models, providersById])
+
+  const enabledModels = useMemo(() => models.filter((model) => model.enabled), [models])
+
+  const assistantModelKey = useMemo(() => {
+    const parsed = parseModelKey(defaultModels.assistantModel)
+    return parsed ? encodeModelKey(parsed.provider, parsed.modelId) : ''
+  }, [defaultModels.assistantModel])
+
+  /**
+   * The Assistant selection is the authority for the text slot; media slots read
+   * their single enabled model. Both are written through one selection action.
+   */
+  const getSlotSelection = (type: UnifiedModelType): ModelSlotSelection => {
+    if (type === 'llm') return { modelKey: assistantModelKey, ambiguous: false }
+    const selection = resolveSingleModelSelection(enabledModels, type)
+    if (selection.status === 'selected') return { modelKey: selection.model.modelKey, ambiguous: false }
+    return { modelKey: '', ambiguous: selection.status === 'ambiguous' }
+  }
 
   return {
     modelProviders,
-    getModelsForProvider: (providerId: string) =>
-      models.filter((model) => model.provider === providerId),
-    getEnabledModelsByType: (type: 'llm' | 'image' | 'video' | 'audio' | 'lipsync' | 'voicedesign') => enabledModelsByType[type],
+    getModelsForProvider: (providerId: string) => models.filter((model) => model.provider === providerId),
+    getSlotOptions: (type: UnifiedModelType): ModelSlotOption[] => slotOptionsByType.get(type) ?? [],
+    getSlotSelection,
+    assistantModelKey,
   }
 }

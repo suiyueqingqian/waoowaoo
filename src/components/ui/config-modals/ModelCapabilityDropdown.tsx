@@ -10,16 +10,21 @@
  *  - 系统级设置中心 (ApiConfigTabContainer)
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslations } from 'next-intl'
-import type { CapabilityValue } from '@/lib/model-config-contract'
+import type { CapabilityValue } from '@/lib/ai-registry/types'
 import { AppIcon, RatioPreviewIcon } from '@/components/ui/icons'
+import { GlassNumberStepper, GlassSelect } from '@/components/ui/primitives'
+import {
+    groupModelCapabilityOptions,
+    resolveSelectedModelProviderLabel,
+} from './model-capability-groups'
 
 // ─── Types ────────────────────────────────────────────
 
 export interface ModelCapabilityOption {
-    /** Composite key e.g. "ark::doubao-seedance-1-0-pro-250528" */
+    /** Composite model key, e.g. "provider::model-id" */
     value: string
     /** Display name */
     label: string
@@ -29,6 +34,8 @@ export interface ModelCapabilityOption {
     providerName?: string
     /** Whether this model is disabled in current context */
     disabled?: boolean
+    /** Note shown beside this model's provider heading, e.g. "no API key". */
+    groupNote?: string
 }
 
 export interface CapabilityFieldDefinition {
@@ -36,6 +43,10 @@ export interface CapabilityFieldDefinition {
     label: string
     options: CapabilityValue[]
     disabledOptions?: CapabilityValue[]
+    /** Server-owned value shown when no stored override exists. */
+    defaultValue?: CapabilityValue
+    /** Overrides the dropdown-level unset policy for this field. */
+    allowUnset?: boolean
 }
 
 export interface CapabilityBooleanToggle {
@@ -68,9 +79,15 @@ export interface ModelCapabilityDropdownProps {
     booleanToggles?: CapabilityBooleanToggle[]
     /** Optional: control dropdown placement strategy. Defaults to 'auto'. */
     placementMode?: 'auto' | 'downward'
+    /**
+     * Default unset policy for fields that do not declare their own. Resets
+     * emit an empty rawValue through onCapabilityChange.
+     */
+    allowUnset?: boolean
 }
 
 const DEFAULT_PANEL_MAX_HEIGHT = 520
+const MIN_COMFORTABLE_PANEL_HEIGHT = 320
 const VIEWPORT_EDGE_GAP = 16
 
 // ─── Helpers ──────────────────────────────────────────
@@ -98,8 +115,8 @@ function isValidRatioText(value: string): boolean {
 
 function shouldUseSelectControl(field: string, options: CapabilityValue[]): boolean {
     if (options.length <= 3) return false
+    if (field === 'reasoningEffort') return true
     if (field.toLowerCase().includes('duration')) return true
-    if (field.toLowerCase().includes('fps')) return true
     return options.every((item) => typeof item === 'number')
 }
 
@@ -107,6 +124,13 @@ function shouldUseSelectControl(field: string, options: CapabilityValue[]): bool
 function isOptionDisabled(def: CapabilityFieldDefinition, option: CapabilityValue): boolean {
     if (!Array.isArray(def.disabledOptions) || def.disabledOptions.length === 0) return false
     return def.disabledOptions.includes(option)
+}
+
+function toEnabledNumericOptions(def: CapabilityFieldDefinition): number[] {
+    return def.options
+        .filter((option) => !isOptionDisabled(def, option))
+        .map((option) => (typeof option === 'number' ? option : Number(option)))
+        .filter((value) => Number.isFinite(value))
 }
 
 // ─── Component ────────────────────────────────────────
@@ -122,12 +146,14 @@ export function ModelCapabilityDropdown({
     compact = false,
     booleanToggles = [],
     placementMode = 'auto',
+    allowUnset = false,
 }: ModelCapabilityDropdownProps) {
     const t = useTranslations('configModal')
     const tv = useTranslations('video')
     const [isOpen, setIsOpen] = useState(false)
     const triggerRef = useRef<HTMLDivElement>(null)
     const panelRef = useRef<HTMLDivElement>(null)
+    const selectedProviderGroupRef = useRef<HTMLDivElement | null>(null)
     const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({})
 
     const updateDropdownPlacement = useCallback(() => {
@@ -140,7 +166,10 @@ export function ModelCapabilityDropdown({
         const spaceBelow = Math.max(0, viewportHeight - rect.bottom - VIEWPORT_EDGE_GAP)
         const preferAutoPlacement = placementMode === 'auto'
         const shouldOpenUpward = preferAutoPlacement
-            ? (spaceBelow < DEFAULT_PANEL_MAX_HEIGHT && spaceAbove > spaceBelow)
+            ? (
+                spaceBelow < MIN_COMFORTABLE_PANEL_HEIGHT && spaceAbove > spaceBelow
+                || spaceBelow < DEFAULT_PANEL_MAX_HEIGHT && spaceAbove >= DEFAULT_PANEL_MAX_HEIGHT
+            )
             : false
         const availableSpace = shouldOpenUpward ? spaceAbove : spaceBelow
         const clampedMaxHeight = Math.max(0, Math.min(DEFAULT_PANEL_MAX_HEIGHT, Math.floor(availableSpace)))
@@ -200,7 +229,29 @@ export function ModelCapabilityDropdown({
     }
 
     const selectedModel = models.find((m) => m.value === value)
-    const visibleCapabilityFields = capabilityFields.filter((field) => field.field !== 'generationMode')
+    const visibleCapabilityFields = capabilityFields
+        .filter((field) => field.field !== 'generationMode')
+        .map((definition) => {
+            const fieldAllowUnset = definition.allowUnset ?? allowUnset
+            const currentValue = capabilityOverrides[definition.field]
+                ?? definition.defaultValue
+                ?? (fieldAllowUnset ? undefined : definition.options[0])
+            return { definition, allowUnset: fieldAllowUnset, value: currentValue }
+        })
+    const fallbackProviderLabel = t('otherProvider')
+    const providerGroups = useMemo(
+        () => groupModelCapabilityOptions(models, fallbackProviderLabel),
+        [models, fallbackProviderLabel],
+    )
+    const selectedProviderLabel = useMemo(
+        () => resolveSelectedModelProviderLabel(models, value, fallbackProviderLabel),
+        [models, value, fallbackProviderLabel],
+    )
+
+    useLayoutEffect(() => {
+        if (!isOpen) return
+        selectedProviderGroupRef.current?.scrollIntoView({ block: 'start' })
+    }, [isOpen, selectedProviderLabel])
 
     const resolveCapabilityLabel = useCallback((field: CapabilityFieldDefinition): string => {
         try {
@@ -210,7 +261,7 @@ export function ModelCapabilityDropdown({
         }
     }, [tv])
 
-    /** Format option value for display — converts booleans to localized On/Off */
+    /** Keep protocol enum names verbatim; only booleans have localized labels. */
     const formatOptionLabel = useCallback((val: CapabilityValue): string => {
         if (val === true || val === 'true') return t('boolOn')
         if (val === false || val === 'false') return t('boolOff')
@@ -219,11 +270,11 @@ export function ModelCapabilityDropdown({
 
     // Build summary text from capability overrides + defaults
     const paramSummary = visibleCapabilityFields
-        .map((def) => {
-            const val = capabilityOverrides[def.field] !== undefined
-                ? capabilityOverrides[def.field]
-                : (def.options.length > 0 ? def.options[0] : '')
-            return formatOptionLabel(val)
+        .map(({ allowUnset: fieldAllowUnset, value: currentValue }) => {
+            if (currentValue === undefined) {
+                return fieldAllowUnset ? t('aiDecide') : ''
+            }
+            return formatOptionLabel(currentValue)
         })
         .concat(
             booleanToggles.map((toggle) => {
@@ -246,7 +297,7 @@ export function ModelCapabilityDropdown({
                 type="button"
                 onClick={handleToggleOpen}
                 className={`glass-input-base w-full ${triggerPx} ${triggerPy} rounded-[14px] transition-all duration-200 cursor-pointer ${isOpen
-                    ? '!border-[var(--glass-tone-info-fg)] shadow-[0_0_0_3px_var(--glass-tone-info-bg)]'
+                    ? '!border-[var(--glass-tone-info-fg)]'
                     : 'hover:border-[var(--glass-stroke-active)]'
                     }`}
             >
@@ -287,50 +338,50 @@ export function ModelCapabilityDropdown({
                 >
                     {/* Model list */}
                     <div className="px-2 pb-2 min-h-0 flex-1 overflow-y-auto app-scrollbar">
-                        {(() => {
-                            // Group models by provider
-                            const grouped = new Map<string, ModelCapabilityOption[]>()
-                            for (const m of models) {
-                                const key = m.providerName || m.provider || 'Other'
-                                if (!grouped.has(key)) grouped.set(key, [])
-                                grouped.get(key)!.push(m)
-                            }
-                            return Array.from(grouped.entries()).map(([providerLabel, groupModels]) => (
-                                <div key={providerLabel} className="mb-1">
-                                    <div className="sticky top-0 z-10 px-2 pt-2 pb-1 bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur-md">
-                                        <span className="text-[11px] font-bold text-[var(--glass-text-tertiary)] tracking-wide">
-                                            {providerLabel}
+                        {providerGroups.map(([providerLabel, groupModels]) => (
+                            <div
+                                key={providerLabel}
+                                ref={providerLabel === selectedProviderLabel ? selectedProviderGroupRef : undefined}
+                                className="mb-1"
+                            >
+                                <div className="sticky top-0 z-10 px-2 pt-2 pb-1 bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur-md">
+                                    <span className="text-[11px] font-bold text-[var(--glass-text-tertiary)] tracking-wide">
+                                        {providerLabel}
+                                    </span>
+                                    {groupModels[0]?.groupNote && (
+                                        <span className="ml-1.5 text-[11px] font-semibold text-[var(--glass-tone-warning-fg)]">
+                                            · {groupModels[0].groupNote}
                                         </span>
-                                    </div>
-                                    <div className="space-y-0.5">
-                                        {groupModels.map((m) => (
-                                            <button
-                                                key={m.value}
-                                                type="button"
-                                                onClick={() => {
-                                                    if (m.disabled) return
-                                                    onModelChange(m.value)
-                                                }}
-                                                disabled={m.disabled}
-                                                className={`w-full text-left px-4 py-2 transition-all border-l-[3px] ${value === m.value
-                                                    ? 'border-[var(--glass-tone-info-fg)] bg-[var(--glass-bg-surface-strong)] font-bold'
-                                                    : m.disabled
-                                                        ? 'border-transparent text-[var(--glass-text-tertiary)] opacity-60 cursor-not-allowed'
-                                                        : 'border-transparent hover:bg-[var(--glass-bg-hover)]'
-                                                    }`}
-                                            >
-                                                <span className={value === m.value
-                                                    ? `${modelOptionTextSize} font-bold text-[var(--glass-text-primary)]`
-                                                    : `${modelOptionTextSize} font-medium text-[var(--glass-text-secondary)]`
-                                                }>
-                                                    {m.label}
-                                                </span>
-                                            </button>
-                                        ))}
-                                    </div>
+                                    )}
                                 </div>
-                            ))
-                        })()}
+                                <div className="space-y-0.5">
+                                    {groupModels.map((m) => (
+                                        <button
+                                            key={m.value}
+                                            type="button"
+                                            onClick={() => {
+                                                if (m.disabled) return
+                                                onModelChange(m.value)
+                                            }}
+                                            disabled={m.disabled}
+                                            className={`w-full text-left px-4 py-2 transition-all border-l-[3px] ${value === m.value
+                                                ? 'border-[var(--glass-tone-info-fg)] bg-[var(--glass-bg-surface-strong)] font-bold'
+                                                : m.disabled
+                                                    ? 'border-transparent text-[var(--glass-text-tertiary)] opacity-60 cursor-not-allowed'
+                                                    : 'border-transparent hover:bg-[var(--glass-bg-hover)]'
+                                                }`}
+                                        >
+                                            <span className={value === m.value
+                                                ? `${modelOptionTextSize} font-bold text-[var(--glass-text-primary)]`
+                                                : `${modelOptionTextSize} font-medium text-[var(--glass-text-secondary)]`
+                                            }>
+                                                {m.label}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </div>
 
                     {/* Capability params: fixed at panel bottom */}
@@ -342,14 +393,15 @@ export function ModelCapabilityDropdown({
                                 </div>
                                 <div className="max-h-[156px] overflow-y-auto app-scrollbar pr-1">
                                     <div className="space-y-3">
-                                        {visibleCapabilityFields.map((def) => {
-                                            const currentVal = capabilityOverrides[def.field] !== undefined
-                                                ? String(capabilityOverrides[def.field])
+                                        {visibleCapabilityFields.map(({ definition: def, allowUnset: fieldAllowUnset, value: currentValue }) => {
+                                            const currentVal = currentValue !== undefined
+                                                ? String(currentValue)
                                                 : ''
                                             const isR = isRatioLike(def.field, def.options)
                                             const useSelect = shouldUseSelectControl(def.field, def.options)
-                                            const fallbackOption = def.options[0]
-                                            const selectValue = currentVal || String(fallbackOption)
+                                            const selectValue = currentVal
+                                            const numericOptions = toEnabledNumericOptions(def)
+                                            const useNumberStepper = !fieldAllowUnset && def.field === 'duration' && numericOptions.length > 0
 
                                             return (
                                                 <div key={def.field} className="flex items-center justify-between gap-3">
@@ -365,30 +417,53 @@ export function ModelCapabilityDropdown({
                                                             {formatOptionLabel(def.options[0])}
                                                             <span className="text-[var(--glass-text-tertiary)] text-[10px]">({t('fixed')})</span>
                                                         </span>
+                                                    ) : useNumberStepper ? (
+                                                        <GlassNumberStepper
+                                                            value={selectValue}
+                                                            onValueChange={(nextValue) => onCapabilityChange(def.field, String(nextValue), def.options[0])}
+                                                            allowedValues={numericOptions}
+                                                            ariaLabel={resolveCapabilityLabel(def)}
+                                                            size="xs"
+                                                            className="w-[104px]"
+                                                        />
                                                     ) : useSelect ? (
-                                                        <div className="relative group">
-                                                            <select
-                                                                value={selectValue}
-                                                                onChange={(event) => onCapabilityChange(def.field, event.target.value, def.options[0])}
-                                                                className="appearance-none bg-transparent hover:bg-[#f2f2f7] dark:hover:bg-[#1c1c1e] text-[13px] font-bold text-[var(--glass-text-primary)] pl-3 pr-7 py-1 rounded-md transition-colors outline-none cursor-pointer border border-transparent"
-                                                            >
-                                                                {def.options.map((opt) => {
-                                                                    const s = String(opt)
-                                                                    return (
-                                                                        <option key={s} value={s}>
-                                                                            {formatOptionLabel(opt)}
-                                                                        </option>
-                                                                    )
-                                                                })}
-                                                            </select>
-                                                            <AppIcon name="chevronDown" className="w-3.5 h-3.5 text-[var(--glass-text-tertiary)] absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none group-hover:text-[var(--glass-text-primary)] transition-colors" />
-                                                        </div>
+                                                        <GlassSelect
+                                                            value={selectValue}
+                                                            onValueChange={(nextValue) => onCapabilityChange(def.field, nextValue, def.options[0])}
+                                                            options={[
+                                                                ...(fieldAllowUnset ? [{ value: '', label: t('aiDecide') }] : []),
+                                                                ...def.options.map((opt) => ({
+                                                                    value: String(opt),
+                                                                    label: formatOptionLabel(opt),
+                                                                    disabled: isOptionDisabled(def, opt),
+                                                                })),
+                                                            ]}
+                                                            ariaLabel={resolveCapabilityLabel(def)}
+                                                            size="xs"
+                                                            triggerVariant="plain"
+                                                            triggerClassName="h-7 min-w-[76px] rounded-md px-2 text-[13px] font-bold text-[var(--glass-text-primary)] hover:bg-[#f2f2f7] dark:hover:bg-[#1c1c1e]"
+                                                            menuMinWidth={120}
+                                                            align="end"
+                                                        />
                                                     ) : (
                                                         <div className="flex bg-[#f2f2f7] dark:bg-[#1c1c1e] p-[3px] rounded-lg shadow-inner">
+                                                            {fieldAllowUnset && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => onCapabilityChange(def.field, '', def.options[0])}
+                                                                    className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-all flex items-center gap-1 cursor-pointer ${!currentVal
+                                                                        ? 'bg-white text-black dark:bg-[#2c2c2e] dark:text-white shadow-[0_3px_8px_rgba(0,0,0,0.12),0_3px_1px_rgba(0,0,0,0.04)] font-bold'
+                                                                        : 'text-[#8e8e93] hover:text-[#3a3a3c] dark:hover:text-[#ebebf5]'
+                                                                        }`}
+                                                                >
+                                                                    <AppIcon name="sparklesAlt" className="h-3 w-3" />
+                                                                    {t('aiDecide')}
+                                                                </button>
+                                                            )}
                                                             {def.options.map((opt) => {
                                                                 const s = String(opt)
                                                                 const disabled = isOptionDisabled(def, opt)
-                                                                const on = currentVal ? s === currentVal : s === String(fallbackOption)
+                                                                const on = s === currentVal
                                                                 return (
                                                                     <button
                                                                         key={s}

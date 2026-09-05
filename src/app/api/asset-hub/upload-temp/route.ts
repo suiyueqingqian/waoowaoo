@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateUniqueKey, getSignedUrl, uploadObject } from '@/lib/storage'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
-import { apiHandler, ApiError } from '@/lib/api-errors'
+import { apiHandler } from '@/lib/api-errors'
+import { executeProjectAgentOperationFromApi } from '@/lib/adapters/api/execute-project-agent-operation'
+import { MAX_BASE64_IMAGE_REQUEST_BYTES, readJsonWithLimit } from '@/lib/http/body-limits'
+import { GLOBAL_ASSET_PROJECT_ID } from '@/lib/workspace-resource/resource-impact'
 
 /**
  * POST /api/asset-hub/upload-temp
@@ -12,44 +14,16 @@ export const POST = apiHandler(async (request: NextRequest) => {
     // 🔐 统一权限验证
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
-    const { session } = authResult
+    const body = await readJsonWithLimit(request, MAX_BASE64_IMAGE_REQUEST_BYTES, 'temporary image upload')
 
-    const body = await request.json()
-    const { imageBase64, base64, extension } = body
-
-    // 支持两种调用方式：
-    // 1. 图片模式：{ imageBase64: "data:image/..." }
-    // 2. 通用模式：{ base64: "...", type: "audio/wav", extension: "wav" }
-
-    let buffer: Buffer
-    let ext: string
-
-    if (imageBase64) {
-        // 图片模式
-        const matches = imageBase64.match(/^data:image\/(\w+);base64,(.+)$/)
-        if (!matches) {
-            throw new ApiError('INVALID_PARAMS')
-        }
-        ext = matches[1] === 'jpeg' ? 'jpg' : matches[1]
-        buffer = Buffer.from(matches[2], 'base64')
-    } else if (base64 && extension) {
-        // 通用模式（音频等）
-        buffer = Buffer.from(base64, 'base64')
-        ext = extension
-    } else {
-        throw new ApiError('INVALID_PARAMS')
-    }
-
-    // 上传到 COS
-    const key = generateUniqueKey(`temp-${session.user.id}-${Date.now()}`, ext)
-    await uploadObject(buffer, key)
-
-    // 返回签名 URL（有效期 1 小时）
-    const signedUrl = getSignedUrl(key, 3600)
-
-    return NextResponse.json({
-        success: true,
-        url: signedUrl,
-        key
+    const result = await executeProjectAgentOperationFromApi({
+        request,
+        operationId: 'api_asset_hub_upload_temp',
+        projectId: GLOBAL_ASSET_PROJECT_ID,
+        userId: authResult.session.user.id,
+        input: body,
+        source: 'asset-hub',
     })
+
+    return NextResponse.json(result)
 })

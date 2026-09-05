@@ -1,0 +1,250 @@
+{
+  "workTrace": {
+    "classificationUnavailable": "未收到最终结果分类",
+    "queued": "等待开始",
+    "running": "正在工作",
+    "waiting": "等待你的确认",
+    "completed": "工作已完成",
+    "failed": "工作未完成",
+    "stopped": "工作已停止",
+    "history": "工作过程",
+    "unavailable": "暂时无法获取工作状态",
+    "withDuration": " · {duration}",
+    "durationSeconds": "{seconds} 秒",
+    "durationMinutesSeconds": "{minutes} 分 {seconds} 秒"
+  },
+  "panel": {
+    "pending": "执行中",
+    "ready": "就绪",
+    "composerPlaceholder": "和 AI 一起创造",
+    "sending": "发送中...",
+    "send": "发送",
+    "stopGenerating": "停止生成",
+    "streaming": "流式响应中",
+    "loading": "加载中",
+    "thinking": "AI 思考中",
+    "responding": "AI 正在响应",
+    "statusReady": "就绪",
+    "errorTitle": "发生错误",
+    "errorHint": "请附上 requestId 以便排查；你也可以直接重试一次相同指令。",
+    "runFailedTitle": "AI 运行失败",
+    "turnInterruptedTitle": "本轮 AI 对话已中断",
+    "turnInterruptedDescription": "服务器在本轮执行期间停止。已完成的操作和长期任务都已保留；发送一条新消息即可继续。",
+    "resend": "重新发送",
+    "continueInterrupted": "继续未完成任务",
+    "continuing": "正在继续...",
+    "continueInterruptedInstruction": "继续上一轮未完成的任务。先检查当前项目文件、计划和已提交任务，只继续尚未完成的部分；不要重复已经完成或已经提交的操作。",
+    "undelivered": "未送达",
+    "sessionStateError": "无法刷新助手状态，请重试或刷新页面后再继续。",
+    "backgroundFollowUpRunning": "正在整理已完成任务的结果…",
+    "settings": "助手设置",
+    "billingConfirmationTitle": "生成前确认费用",
+    "billingConfirmationDescription": "开启时，收费操作会先显示报价卡。",
+    "settingsError": "设置加载失败，点击重试。",
+    "collapse": "折叠 AI 助手侧栏",
+    "expand": "展开 AI 助手侧栏",
+    "resize": "拖动调整 AI 侧栏宽度",
+    "workspaceStatus": "节点画布",
+    "pendingActionsTitle": "待处理动作",
+    "pendingApprovalChip": "审批：{label}",
+    "pendingConfirmationChip": "确认：{label}",
+    "latest": "最新",
+    "pendingApprovalTitle": "待处理审批",
+    "pendingApprovalCount": "{count} 个待处理动作",
+    "copyAnswer": "复制回答",
+    "copiedAnswer": "已复制",
+    "sourceCount": "{count} 个来源"
+  },
+  "canvasContext": {
+    "active": "已在画布中选中",
+    "clear": "清除画布选中项",
+    "mediaType": {
+      "text": "文本",
+      "image": "图片",
+      "audio": "音频",
+      "video": "视频"
+    }
+  },
+  "plan": {
+    "title": "执行计划",
+    "completedProgress": "已完成 {completed} / {total}"
+  },
+  "reasoning": {
+    "running": "思考中",
+    "completed": "推理过程",
+    "failed": "执行失败",
+    "executionRunning": "执行中 · 已调用 {count} 次工具",
+    "executionCompleted": "执行完成 · 调用 {count} 次工具",
+    "executionFailed": "执行失败 · 调用 {count} 次工具"
+  },
+  "attachments": {
+    "openUpload": "上传文件",
+    "fileMeta": "{chars} 字 · {size}",
+    "removeFile": "移除 {fileName}",
+    "mediaKindImage": "图片",
+    "mediaKindAudio": "音频",
+    "mediaKindVideo": "视频",
+    "chatAttachmentImage": "图片 · 对话附件",
+    "chatAttachmentAudio": "音频 · 对话附件",
+    "chatAttachmentVideo": "视频 · 对话附件",
+    "mediaUploading": "附件上传中...",
+    "mediaUploadFailed": "附件上传失败。"
+  },
+  "toolCall": {
+    "title": "工具调用",
+    "success": "成功",
+    "submitted": "已提交",
+    "groupTitle": "{title} × {count}",
+    "groupProgressSummary": "成功 {success} · 已提交 {submitted} · 失败 {failed} · 已停止 {interrupted} · 待处理 {needsAction} · 进行中 {running}",
+    "partial": "部分完成",
+    "failed": "失败",
+    "interrupted": "已停止",
+    "failedDetail": "操作未能完成，请重试。",
+    "validationMissing": "缺少必填字段 {field}。",
+    "validationMove": "字段 {field} 的位置不正确，应移动到 {target}。",
+    "validationUnsupported": "当前操作不支持字段 {field}。",
+    "validationAllowedValues": "字段 {field} 的值不受支持；允许值：{values}。",
+    "validationInvalidType": "字段 {field} 的值类型不正确。",
+    "validationTooSmall": "字段 {field} 小于允许范围。",
+    "validationTooBig": "字段 {field} 超出允许范围。",
+    "validationInvalid": "字段 {field} 不符合当前操作的输入要求。",
+    "reasonFieldDetail": "字段 {field} 处理失败，具体原因：{reasonCode}",
+    "reasonDetail": "操作失败，具体原因：{reasonCode}",
+    "running": "进行中",
+    "needsAction": "待处理",
+    "show": "展开",
+    "hide": "收起",
+    "arguments": "参数",
+    "result": "结果",
+    "waiting": "等待工具返回结果...",
+    "webSearchRunning": "联网搜索中…",
+    "runSummary": "{count} 次工具调用"
+  },
+  "runtime": {
+    "goal": "当前目标",
+    "goalUsage": "{tokens} tokens · {seconds} 秒",
+    "goalStatus": {
+      "active": "进行中",
+      "paused": "已暂停",
+      "blocked": "已阻塞",
+      "usageLimited": "用量受限",
+      "budgetLimited": "预算受限",
+      "complete": "已完成"
+    },
+    "skills": {
+      "title": "可用 Skills",
+      "count": "{count} 个 Skills",
+      "changed": "Skill 清单已刷新",
+      "disabled": "未启用",
+      "errors": "{count} 个 Skill 加载失败"
+    },
+    "permission": {
+      "cwd": "工作目录：{value}",
+      "network": "网络权限：{value}",
+      "fileSystem": "文件系统权限：{value}"
+    },
+    "progress": {
+      "shell": "命令输出",
+      "file": "文件修改",
+      "mcp": "生产能力进度"
+    },
+    "native": {
+      "shell": "执行命令",
+      "fileChange": "修改文件",
+      "webSearch": "联网检索",
+      "viewImage": "查看图片",
+      "userDecision": "用户选择",
+      "skillRead": "读取 Skill：{skill}",
+      "skillNames": {
+        "script-development": "内容与脚本开发",
+        "creative-direction": "创作方向",
+        "asset-development": "资产范围与视觉设计",
+        "video-direction": "视频导演与生成设计",
+        "music-direction": "音乐与配乐设计"
+      },
+      "web": {
+        "search": "搜索：{query}",
+        "openPage": "页面：{value}",
+        "findInPage": "页内查找：{value}",
+        "other": "联网结果"
+      }
+    }
+  },
+  "thread": {
+    "user": "用户",
+    "modelOutput": "模型输出",
+    "executionEvent": "执行事件"
+  },
+  "toolConfig": {
+    "title": "配置工具",
+    "description": "勾选仅影响 eligible 工具集合；后端仍按路由与 Top-N 注入策略裁剪。",
+    "loading": "加载中...",
+    "selectedSummary": "当前视图已选 {count} 项。Eligible 不等于每轮注入。",
+    "reset": "恢复默认",
+    "save": "保存",
+    "mode": "模式",
+    "riskBudget": "风险预算",
+    "groups": "分组",
+    "all": "全部",
+    "ungrouped": "未分组",
+    "searchPlaceholder": "搜索工具 / 描述 / tag…",
+    "empty": "暂无可配置工具",
+    "risk": {
+      "billable": "计费",
+      "high": "高风险",
+      "medium": "中风险",
+      "low": "低风险"
+    },
+    "profileMode": {
+      "explore": "探索",
+      "edit": "编辑",
+      "generate": "生成",
+      "recover": "恢复"
+    },
+    "riskBudgetValue": {
+      "low-only": "仅低风险",
+      "allow-medium": "允许中风险",
+      "allow-high-with-confirm": "高风险需确认"
+    },
+    "groupSegment": {
+      "asset-hub": "资产中心",
+      "read": "读取",
+      "folder": "文件夹",
+      "picker": "选择器",
+      "character": "角色",
+      "location": "场景",
+      "ungrouped": "未分组"
+    }
+  },
+  "cards": {
+    "projectContext": "项目上下文",
+    "workspaceLabel": "工作区",
+    "toolErrorBoundary": "工具调用失败",
+    "toolErrorCorrection": "请修正该操作的输入或配置后重试。",
+    "toolErrorListSeparator": "、",
+    "confirmationRequired": "需要确认",
+    "billingQuotePreview": "即将提交的生成任务计费预览",
+    "billingActionSummary": "生成 {items}",
+    "billingActionImageItems": "{count} 张图片",
+    "billingActionVideoItems": "{count} 个视频",
+    "billingActionMusicItems": "{count} 段音乐",
+    "billingActionVoiceCharacterItems": "{count} 个音色试听字符",
+    "billingActionMusicSecondItems": "{count} 秒音乐",
+    "billingActionVideoSecondItems": "{count} 秒视频",
+    "billingActionListSeparator": "、",
+    "billingActionQuoteWithCredits": "{action} · 预计消耗 {cost} credits",
+    "billingActionQuoteWithoutCredits": "将提交：{action}",
+    "billingQuoteWithCredits": "{count} 个媒体生成任务 · 预计消耗 {cost} credits",
+    "billingQuoteWithoutCredits": "将提交 {count} 个媒体生成任务",
+    "confirmContinue": "继续执行",
+    "cancelAction": "取消操作",
+    "cancelDecision": "取消",
+    "sendDecision": "提交自定义答案",
+    "interactionSubmitting": "处理中...",
+    "interactionSubmitErrorFallback": "该响应暂时无法提交，请刷新对话后重试。",
+    "contextCompacting": "正在整理较长的对话上下文…",
+    "contextCompactionFailed": "对话上下文整理失败",
+    "contextCompacted": "已压缩较早的 {count} 条上下文记录",
+    "contextCompactedUnknown": "已压缩较早的上下文"
+  }
+}

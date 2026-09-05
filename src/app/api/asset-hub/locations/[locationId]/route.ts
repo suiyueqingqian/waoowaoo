@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { ApiError, apiHandler } from '@/lib/api-errors'
+import { executeProjectAgentOperationFromApi } from '@/lib/adapters/api/execute-project-agent-operation'
+import { GLOBAL_ASSET_PROJECT_ID } from '@/lib/workspace-resource/resource-impact'
 
 // 获取单个场景
 export const GET = apiHandler(async (
@@ -10,21 +11,20 @@ export const GET = apiHandler(async (
 ) => {
     const { locationId } = await context.params
 
-    // 🔐 统一权限验证
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
     const { session } = authResult
 
-    const location = await prisma.globalLocation.findUnique({
-        where: { id: locationId },
-        include: { images: true }
+    const result = await executeProjectAgentOperationFromApi({
+      request,
+      operationId: 'asset_hub_get_location',
+      projectId: GLOBAL_ASSET_PROJECT_ID,
+      userId: session.user.id,
+      input: { locationId },
+      source: 'asset-hub',
     })
 
-    if (!location || location.userId !== session.user.id) {
-        throw new ApiError('NOT_FOUND')
-    }
-
-    return NextResponse.json({ location })
+    return NextResponse.json(result)
 })
 
 // 更新场景
@@ -34,44 +34,35 @@ export const PATCH = apiHandler(async (
 ) => {
     const { locationId } = await context.params
 
-    // 🔐 统一权限验证
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
     const { session } = authResult
 
-    const location = await prisma.globalLocation.findUnique({
-        where: { id: locationId }
-    })
-
-    if (!location || location.userId !== session.user.id) {
-        throw new ApiError('FORBIDDEN')
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'BODY_PARSE_FAILED',
+        field: 'body',
+        message: 'request body must be valid JSON',
+      })
     }
 
-    const body = await request.json()
-    const { name, summary, folderId } = body
-
-    const updateData: Record<string, unknown> = {}
-    if (name !== undefined) updateData.name = name.trim()
-    if (summary !== undefined) updateData.summary = summary?.trim() || null
-    if (folderId !== undefined) {
-        if (folderId) {
-            const folder = await prisma.globalAssetFolder.findUnique({
-                where: { id: folderId }
-            })
-            if (!folder || folder.userId !== session.user.id) {
-                throw new ApiError('INVALID_PARAMS')
-            }
-        }
-        updateData.folderId = folderId || null
-    }
-
-    const updatedLocation = await prisma.globalLocation.update({
-        where: { id: locationId },
-        data: updateData,
-        include: { images: true }
+    const result = await executeProjectAgentOperationFromApi({
+      request,
+      operationId: 'asset_hub_update_location',
+      projectId: GLOBAL_ASSET_PROJECT_ID,
+      userId: session.user.id,
+      input: {
+        ...(body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {}),
+        locationId,
+      },
+      source: 'asset-hub',
+      responseContract: 'operation_mutation_response_v1',
     })
 
-    return NextResponse.json({ success: true, location: updatedLocation })
+    return NextResponse.json(result)
 })
 
 // 删除场景
@@ -81,22 +72,22 @@ export const DELETE = apiHandler(async (
 ) => {
     const { locationId } = await context.params
 
-    // 🔐 统一权限验证
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
     const { session } = authResult
 
-    const location = await prisma.globalLocation.findUnique({
-        where: { id: locationId }
+    const result = await executeProjectAgentOperationFromApi({
+      request,
+      operationId: 'delete_asset',
+      projectId: GLOBAL_ASSET_PROJECT_ID,
+      userId: session.user.id,
+      input: {
+        target: { kind: 'location', assetId: locationId },
+        scope: 'global',
+      },
+      source: 'asset-hub',
+      responseContract: 'operation_mutation_response_v1',
     })
 
-    if (!location || location.userId !== session.user.id) {
-        throw new ApiError('FORBIDDEN')
-    }
-
-    await prisma.globalLocation.delete({
-        where: { id: locationId }
-    })
-
-    return NextResponse.json({ success: true })
+    return NextResponse.json(result)
 })

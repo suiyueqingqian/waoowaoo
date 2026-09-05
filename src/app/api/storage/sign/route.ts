@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { getSignedObjectUrl } from '@/lib/storage'
+import { getMediaObjectDelivery, getSignedObjectUrl } from '@/lib/storage'
+import { isErrorResponse } from '@/lib/api-auth'
+import { authorizeStorageObjectRead } from '@/lib/media/storage-access-policy'
 
 const DEFAULT_EXPIRES_SECONDS = 3600
 
@@ -13,9 +15,30 @@ export const GET = apiHandler(async (request: NextRequest) => {
     throw new ApiError('INVALID_PARAMS')
   }
 
-  const expires = expiresRaw ? Number.parseInt(expiresRaw, 10) : DEFAULT_EXPIRES_SECONDS
-  const ttl = Number.isFinite(expires) && expires > 0 ? expires : DEFAULT_EXPIRES_SECONDS
+  const authResult = await authorizeStorageObjectRead(key)
+  if (isErrorResponse(authResult)) return authResult
 
-  const signedUrl = await getSignedObjectUrl(key, ttl)
-  return NextResponse.redirect(signedUrl)
+  const expires = expiresRaw ? Number.parseInt(expiresRaw, 10) : DEFAULT_EXPIRES_SECONDS
+  const ttl = Number.isFinite(expires) && expires > 0
+    ? Math.min(expires, DEFAULT_EXPIRES_SECONDS)
+    : DEFAULT_EXPIRES_SECONDS
+
+  if (getMediaObjectDelivery() === 'authenticated-proxy') {
+    const response = NextResponse.redirect(
+      new URL(`/m/${encodeURIComponent(authResult.media.publicId)}`, request.url),
+      307,
+    )
+    response.headers.set('Cache-Control', 'private, no-store')
+    return response
+  }
+
+  const signedUrl = await getSignedObjectUrl(authResult.media.storageKey, {
+    expiresInSeconds: ttl,
+  })
+  const response = new NextResponse(null, {
+    status: 307,
+    headers: { Location: signedUrl },
+  })
+  response.headers.set('Cache-Control', 'private, no-store')
+  return response
 })

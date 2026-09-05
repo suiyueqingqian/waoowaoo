@@ -4,7 +4,7 @@
  * TypewriterHero — 标题 + 终端打字机副标题
  * 对焦动画保留，取景器四角线移至页面级包裹
  */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, type CSSProperties } from 'react'
 
 const TYPE_SPEED = 55
 const DELETE_SPEED = 20
@@ -14,16 +14,18 @@ const PAUSE_AFTER_DELETE = 500
 interface TypewriterHeroProps {
   title: string
   subtitle: string
+  focusAnimation?: string
+  subtitleAnimation?: string
 }
 
-export default function TypewriterHero({ title, subtitle }: TypewriterHeroProps) {
-  const [text, setText] = useState('')
+export default function TypewriterHero({
+  title,
+  subtitle,
+  focusAnimation,
+  subtitleAnimation,
+}: TypewriterHeroProps) {
+  const [{ text, previousLength }, setFrame] = useState({ text: '', previousLength: 0 })
   const [isDeleting, setIsDeleting] = useState(false)
-  const prevLenRef = useRef(0)
-
-  useEffect(() => {
-    prevLenRef.current = text.length
-  })
 
   useEffect(() => {
     let timeout: NodeJS.Timeout
@@ -33,7 +35,10 @@ export default function TypewriterHero({ title, subtitle }: TypewriterHeroProps)
       timeout = setTimeout(() => setIsDeleting(false), PAUSE_AFTER_DELETE)
     } else {
       timeout = setTimeout(
-        () => setText(subtitle.slice(0, text.length + (isDeleting ? -1 : 1))),
+        () => setFrame({
+          text: subtitle.slice(0, text.length + (isDeleting ? -1 : 1)),
+          previousLength: text.length,
+        }),
         isDeleting ? DELETE_SPEED : TYPE_SPEED
       )
     }
@@ -41,7 +46,15 @@ export default function TypewriterHero({ title, subtitle }: TypewriterHeroProps)
   }, [text, isDeleting, subtitle])
 
   const isNewChar = (i: number) =>
-    !isDeleting && i === text.length - 1 && text.length > prevLenRef.current
+    !isDeleting && i === text.length - 1 && text.length > previousLength
+
+  const subtitleStyle: CSSProperties = {
+    color: 'var(--glass-text-tertiary)',
+  }
+
+  if (subtitleAnimation) {
+    subtitleStyle.animation = subtitleAnimation
+  }
 
   return (
     <div className="text-center mb-4">
@@ -72,13 +85,17 @@ export default function TypewriterHero({ title, subtitle }: TypewriterHeroProps)
       {/* 标题 — 带对焦动画 */}
       <h1
         className="text-3xl font-bold text-[var(--glass-text-primary)] tracking-[0.08em] mb-2"
-        style={{ animation: 'twh-focus-pull 8s ease-in-out infinite' }}
+        style={{ animation: focusAnimation ?? 'twh-focus-pull 8s ease-in-out infinite' }}
       >
         {title}
       </h1>
 
       {/* 终端打字机副标题 */}
-      <p className="font-mono text-sm h-6 flex items-center justify-center" style={{ color: 'var(--glass-text-tertiary)' }}>
+      <p
+        data-home-focus-subtitle="true"
+        className="font-mono text-sm h-6 flex items-center justify-center"
+        style={subtitleStyle}
+      >
         <span className="mr-1.5 opacity-50">&gt;_</span>
         {text.split('').map((char, i) => (
           <span

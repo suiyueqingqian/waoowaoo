@@ -1,123 +1,89 @@
 <p align="center">
-  <img src="public/banner.png" alt="waoowaoo" width="600">
+  <a href="https://trendshift.io/repositories/22585?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-22585" target="_blank" rel="noopener noreferrer">
+    <img src="https://trendshift.io/api/badge/trendshift/repositories/22585/daily" alt="waooAI%2Fwaoowaoo | Trendshift" width="250" height="55"/>
+  </a>
 </p>
 
-<h1 align="center">waoowaoo AI Video Studio</h1>
+<p align="center">An AI creative workspace for images and videos: develop ideas with the right-hand Assistant, upload references, and organize and refine your work on a canvas.</p>
 
-<p align="center">
-  An AI-powered tool for creating short drama / comic videos — automatically generates storyboards, characters, and scenes from novel text, then assembles them into complete videos.
-</p>
+<p align="center"><a href="https://www.waoowaoo.com/">Join Waitlist</a> · <a href="https://github.com/waooAI/waoowaoo/issues">Report Bug</a></p>
 
-<p align="center">
-  <a href="README.md">中文文档</a> · <a href="https://www.waoowaoo.com/">Join Waitlist</a> · <a href="https://github.com/saturndec/waoowaoo/issues">Report Bug</a>
-</p>
+[English](README.md) · [简体中文](README_zh.md) · [日本語](README_ja.md) · [한국어](README_ko.md)
 
 > [!IMPORTANT]
-> **Beta Notice**: This project is currently in its early beta stage. As it is currently a solo-developed project, some bugs and imperfections are to be expected. We are iterating rapidly — please stay tuned for frequent updates! We are committed to rolling out a massive roadmap of new features and optimizations, with the ultimate goal of becoming the top-tier solution in the industry. Your feedback and feature requests are highly welcome!
+> **Preview release:** we are iterating rapidly, and some bugs and rough edges remain. Join the community to share feedback and follow updates.
+
+WeChat / community
+
+<img src="https://github.com/user-attachments/assets/0f4ff766-f059-4554-9193-caf34b081c7b" width="30%">
 
 ---
 
 ## ✨ Features
 
-- 🎬 **AI Script Analysis** — Parse novels, extract characters, scenes & plot automatically
-- 🎨 **Character & Scene Generation** — Consistent AI-generated character and scene images
-- 📽️ **Storyboard Video** — Auto-generate shots and compose into complete videos
-- 🎙️ **AI Voiceover** — Multi-character voice synthesis
-- 🌐 **Bilingual UI** — Chinese / English, switch in the top-right corner
+- Work with the right-hand Assistant to develop a brief and create assets in an ongoing project.
+- Upload reference material, organize files, and inspect generated images and videos on the canvas.
+- Generate with model-aware aspect ratios, durations, resolutions, and reference roles.
+- Use supported first-frame, first/last-frame, or reference-image modes; availability depends on the selected model.
+- Refine an existing result into a new version while retaining the original.
+
+This preview exposes **OpenRouter** configuration. Available models include GPT Image 2, Nano Banana variants, Seedance variants, and MiniMax H3 / H3 Max. Availability and charges depend on the provider. H3 Max currently accepts a single first frame in this application, not a first/last-frame pair. Music and voiceover controls are not included in this preview.
+
+The application UI currently supports Chinese and English. Japanese and Korean are README translations.
 
 ---
 
 ## 🚀 Quick Start
 
-**Prerequisites**: Install [Docker Desktop](https://docs.docker.com/get-docker/)
+Copy the following into a local coding assistant with terminal access. It will inspect your machine, install the required dependencies, and configure Docker for you. You may need to approve an operating-system installer or start Docker Desktop yourself.
 
-### Method 1: Pull Pre-built Image (Easiest)
-
-No need to clone the repository. Just download and run:
-
-```bash
-# Download docker-compose.yml
-curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
-
-# Start all services
-docker compose up -d
+```text
+Install the self-hosted preview of https://github.com/waooAI/waoowaoo on my computer.
+Read the repository README, docs/INSTALL.md, and the selected GitHub Release first.
+Use a published preview release and its prebuilt Docker images. Pin both the
+application and the Codex runtime to the release's immutable image digests.
+Check my OS, CPU architecture, Docker Engine/Desktop, Compose v2, Git, and flock;
+install missing dependencies using the appropriate OS tools, with approval where required.
+Use a new installation directory and preserve all existing containers, files, and data.
+Generate unique local secrets and configure .env without printing or uploading secrets.
+Follow the existing Worker bootstrap procedure; do not invent a second startup path.
+Include docker/caddy/Caddyfile from the same release. Use the default Compose HTTPS entry:
+SELF_HOSTED_HOST=localhost, SELF_HOSTED_HTTPS_PORT=1443; APP_HOST_PORT=13000 only redirects HTTP.
+The overlay derives NEXTAUTH_URL; preserve Caddy's /data and /config named volumes.
+Export only root.crt, explain its trust implications, and obtain my explicit approval
+before helping me trust it on the browser's host OS (Windows trust is separate from WSL).
+Never export root.key or bypass TLS checks. Verify https://localhost:1443 has no certificate
+warning and the browser actually uses h2, including event streams across multiple tabs.
+SSE tab concurrency is not the AI task concurrency limit.
+Verify container health and that the application opens, then tell me the local URL.
+Guide me to enter my OpenRouter API key in the application; do not request it in chat.
+Do not start paid AI generations without my approval. If the release lacks a required
+image or my platform is unsupported, explain the blocker instead of claiming success.
 ```
 
-> ⚠️ This is a beta version. Database is not compatible between versions. To upgrade, clear old data first:
+The release Compose setup starts Caddy automatically. After approving local certificate trust, open **https://localhost:1443**; port `13000` only redirects HTTP. Source development with `npm run dev` remains at `http://localhost:3001`.
 
-```bash
-docker compose down -v
-docker rmi ghcr.io/saturndec/waoowaoo:latest
-curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
-docker compose up -d
-```
-
-> After starting, please **clear your browser cache** and log in again to avoid issues caused by stale cache.
-
-### Method 2: Clone & Docker Build (Full Control)
-
-```bash
-git clone https://github.com/saturndec/waoowaoo.git
-cd waoowaoo
-docker compose up -d
-```
-
-To update:
-```bash
-git pull
-docker compose down && docker compose up -d --build
-```
-
-### Method 3: Local Development (For Developers)
-
-```bash
-git clone https://github.com/saturndec/waoowaoo.git
-cd waoowaoo
-
-# Copy environment config (must be done before npm install)
-cp .env.example .env
-# ⚠️ Edit .env to fill in your AI API Keys (NEXTAUTH_URL defaults to http://localhost:3000, no change needed)
-
-npm install
-
-# Start infrastructure only
-docker compose up mysql redis minio -d
-
-# Run database migration
-npx prisma db push
-
-# Start development server
-npm run dev
-```
-
----
-
-Visit [http://localhost:13000](http://localhost:13000) (Method 1 & 2) or [http://localhost:3000](http://localhost:3000) (Method 3) to get started!
-
-> The database is initialized automatically on first launch — no extra configuration needed.
-
-> [!TIP]
-> **If you experience lag**: HTTP mode may limit browser connections. Install [Caddy](https://caddyserver.com/docs/install) for HTTPS:
-> ```bash
-> caddy run --config Caddyfile
-> ```
-> Then visit [https://localhost:1443](https://localhost:1443)
+The recommended distribution is **prebuilt Docker images**. You do not need to install Node.js, MySQL, Redis, Temporal, or FFmpeg on your host for this path; application dependencies run in containers. The complete installation instructions for your assistant and manual setup are in [docs/INSTALL.md](docs/INSTALL.md).
 
 ---
 
 ## 🔧 API Configuration
 
-After launching, go to **Settings** to configure your AI service API keys. A built-in guide is provided.
+After launching, open your profile’s **API configuration** and add your OpenRouter API key. Provider calls are paid through your own account. Keep API keys out of chat and support logs.
 
-> 💡 **Note**: Currently only official provider APIs are recommended. Third-party compatible formats (OpenAI Compatible) are not yet fully supported and will be improved in future releases.
+Project data and media use local database and private MinIO storage; prompts and references are sent to the provider for requested AI tasks. Supported inline image references do not require a public media URL.
+
+For manual setup, source builds, backups, and upgrades, see [the installation guide](docs/INSTALL.md).
 
 ---
 
 ## 📦 Tech Stack
 
-- **Framework**: Next.js 15 + React 19
+- **Framework**: Next.js 16 + React 19
 - **Database**: MySQL + Prisma ORM
-- **Queue**: Redis + BullMQ
+- **Durable execution**: Temporal
+- **Transport & cache**: Redis
+- **Media storage**: Private MinIO (S3)
 - **Styling**: Tailwind CSS v4
 - **Auth**: NextAuth.js
 
@@ -125,20 +91,23 @@ After launching, go to **Settings** to configure your AI service API keys. A bui
 
 ## 📦 Preview
 
-![4f7b913264f7f26438c12560340e958c67fa833a](https://github.com/user-attachments/assets/fa0e9c57-9ea0-4df3-893e-b76c4c9d304b)
-![67509361cbe6809d2496a550de5733b9f99a9702](https://github.com/user-attachments/assets/f2fb6a64-5ba8-4896-a064-be0ded213e42)
-![466e13c8fd1fc799d8f588c367ebfa24e1e99bf7](https://github.com/user-attachments/assets/09bbff39-e535-4c67-80a9-69421c3b05ee)
-![c067c197c20b0f1de456357c49cdf0b0973c9b31](https://github.com/user-attachments/assets/688e3147-6e95-43b0-b9e7-dd9af40db8a0)
+
 
 ---
 
 ## 🤝 Contributing
 
-This project is maintained by the core team. You're welcome to contribute by:
+This project is maintained by the core team. You are welcome to:
 
-- 🐛 Filing [Issues](https://github.com/saturndec/waoowaoo/issues) — report bugs
-- 💡 Filing [Issues](https://github.com/saturndec/waoowaoo/issues) — propose features
-- 🔧 Submitting Pull Requests as references — we review every PR carefully for ideas, but the team implements fixes internally rather than merging external PRs directly
+- 🐛 File an [Issue](https://github.com/waooAI/waoowaoo/issues) to report bugs.
+- 💡 File an [Issue](https://github.com/waooAI/waoowaoo/issues) to suggest features.
+- 🔧 Submit a Pull Request for reference — we review ideas carefully, but the team implements changes internally rather than merging external PRs directly.
+
+---
+
+## License
+
+Starting with v0.5.0-beta.1, this distribution is licensed under [Elastic License 2.0](LICENSE). Personal use, internal business use, modification, and redistribution are permitted subject to its terms. Providing third parties with hosted or managed access to a substantial set of the software’s features requires separate permission. Earlier releases retain their original licenses; third-party components retain their respective licenses. This is source-available software, not OSI-approved open source.
 
 ---
 

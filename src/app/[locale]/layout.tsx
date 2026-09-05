@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
-import Script from "next/script";
-import { GeistSans } from 'geist/font/sans';
-import { GeistMono } from 'geist/font/mono';
 import { NextIntlClientProvider } from 'next-intl';
-import { getMessages, getTranslations } from 'next-intl/server';
+import { getMessages, getTranslations, setRequestLocale } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import "../globals.css";
 import { Providers } from "./providers";
@@ -23,14 +20,17 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
         title: t('title'),
         description: t('description'),
         icons: {
-            icon: '/logo.ico?v=2',
-            shortcut: '/logo.ico?v=2',
-            apple: '/logo.png?v=2',
+            icon: [{ url: '/favicon.ico', type: 'image/x-icon' }],
+            shortcut: '/favicon.ico',
+            apple: '/logo.png',
         },
     };
 }
 
 export function generateStaticParams() {
+    // Resolve locales on demand in dev: Next 16.3.4 can concurrently overwrite
+    // its prerender manifest while compiling different locale pages.
+    if (process.env.NODE_ENV === 'development') return [];
     return locales.map((locale) => ({ locale }));
 }
 
@@ -48,22 +48,15 @@ export default async function LocaleLayout({
         notFound();
     }
 
+    setRequestLocale(locale);
+
     // 获取翻译消息
     const messages = await getMessages();
 
     return (
-        <html lang={locale}>
-            <head>
-                {process.env.NODE_ENV === "development" && (
-                    <Script
-                        src="//unpkg.com/react-grab/dist/index.global.js"
-                        crossOrigin="anonymous"
-                        strategy="beforeInteractive"
-                    />
-                )}
-            </head>
+        <html lang={locale} suppressHydrationWarning>
             <body
-                className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
+                suppressHydrationWarning
             >
                 <NextIntlClientProvider messages={messages}>
                     <Providers>

@@ -1,16 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { isErrorResponse, requireUserAuth } from '@/lib/api-auth'
-import { removeTaskJob } from '@/lib/task/queues'
-import { listTaskLifecycleEvents, publishTaskEvent } from '@/lib/task/publisher'
-import { cancelTask, getTaskById } from '@/lib/task/service'
-import { TASK_EVENT_TYPE } from '@/lib/task/types'
-import { normalizeTaskError } from '@/lib/errors/normalize'
-
-function toObject(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return value as Record<string, unknown>
-}
+import { executeProjectAgentOperationFromApi } from '@/lib/adapters/api/execute-project-agent-operation'
+import type { GetTaskInput } from '@/lib/operations/domains/task/task-ops'
 
 export const GET = apiHandler(async (
   request: NextRequest,
@@ -20,27 +12,47 @@ export const GET = apiHandler(async (
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
   const { taskId } = await context.params
-
-  const task = await getTaskById(taskId)
-  if (!task || task.userId !== session.user.id) {
-    throw new ApiError('NOT_FOUND')
+  const includeEvents = request.nextUrl.searchParams.get('includeEvents')
+  const eventsLimit = request.nextUrl.searchParams.get('eventsLimit')
+  const includeEventsRequested = includeEvents === '1' || includeEvents === 'true'
+  const excludeEventsRequested = includeEvents === null || includeEvents === '0' || includeEvents === 'false'
+  if (!includeEventsRequested && !excludeEventsRequested) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'TASK_EVENTS_MODE_INVALID',
+      field: 'includeEvents',
+    })
+  }
+  if (eventsLimit !== null && !includeEventsRequested) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'TASK_EVENTS_LIMIT_WITHOUT_EVENTS',
+      field: 'eventsLimit',
+    })
   }
 
-  const includeEvents = request.nextUrl.searchParams.get('includeEvents') === '1'
-  const eventsLimitRaw = Number.parseInt(request.nextUrl.searchParams.get('eventsLimit') || '500', 10)
-  const eventsLimit = Number.isFinite(eventsLimitRaw) ? Math.min(Math.max(eventsLimitRaw, 1), 5000) : 500
-  const events = includeEvents ? await listTaskLifecycleEvents(taskId, eventsLimit) : null
+  const input: GetTaskInput = {
+    taskId,
+    events: includeEventsRequested
+      ? {
+          kind: 'include' as const,
+          ...(eventsLimit !== null ? { limit: Number(eventsLimit) } : {}),
+        }
+      : { kind: 'none' as const },
+  }
 
-  return NextResponse.json({
-    task: {
-      ...task,
-      error: normalizeTaskError(task.errorCode, task.errorMessage)},
-    ...(events ? { events } : {}),
+  const result = await executeProjectAgentOperationFromApi({
+    request,
+    operationId: 'get_task',
+    projectId: 'system',
+    userId: session.user.id,
+    input,
+    source: 'project-ui',
   })
+
+  return NextResponse.json(result)
 })
 
 export const DELETE = apiHandler(async (
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ taskId: string }> },
 ) => {
   const authResult = await requireUserAuth()
@@ -48,41 +60,14 @@ export const DELETE = apiHandler(async (
   const { session } = authResult
   const { taskId } = await context.params
 
-  const task = await getTaskById(taskId)
-  if (!task || task.userId !== session.user.id) {
-    throw new ApiError('NOT_FOUND')
-  }
+  const result = await executeProjectAgentOperationFromApi({
+    request,
+    operationId: 'cancel_task',
+    projectId: 'system',
+    userId: session.user.id,
+    input: { taskId },
+    source: 'project-ui',
+  })
 
-  const { task: updatedTask, cancelled } = await cancelTask(taskId)
-  if (!updatedTask) {
-    throw new ApiError('NOT_FOUND')
-  }
-
-  if (cancelled) {
-    // Best effort: remove queued job to avoid worker picking it up after cancellation.
-    await removeTaskJob(taskId).catch(() => false)
-    await publishTaskEvent({
-      taskId: updatedTask.id,
-      projectId: updatedTask.projectId,
-      userId: updatedTask.userId,
-      type: TASK_EVENT_TYPE.FAILED,
-      taskType: updatedTask.type,
-      targetType: updatedTask.targetType,
-      targetId: updatedTask.targetId,
-      episodeId: updatedTask.episodeId || null,
-      payload: {
-        ...toObject(updatedTask.payload),
-        stage: 'cancelled',
-        stageLabel: '任务已取消',
-        cancelled: true,
-        message: updatedTask.errorMessage || 'Task cancelled by user'},
-      persist: false})
-  }
-
-  return NextResponse.json({
-    success: true,
-    cancelled,
-    task: {
-      ...updatedTask,
-      error: normalizeTaskError(updatedTask.errorCode, updatedTask.errorMessage)}})
+  return NextResponse.json(result)
 })

@@ -4,20 +4,12 @@ const TARGETS = ['src/app/api', 'src/lib']
 
 const EXTRACT_ALLOWLIST = new Set<string>([
   'src/lib/media/service.ts',
-  'src/lib/voice/generate-voice-line.ts',
 ])
 
 const FETCH_MEDIA_ALLOWLIST = new Set<string>([
   'src/lib/media-process.ts',
   'src/lib/image-cache.ts',
-  'src/lib/image-label.ts',
-  'src/lib/workers/utils.ts',
-  'src/app/api/novel-promotion/[projectId]/download-images/route.ts',
-  'src/app/api/novel-promotion/[projectId]/download-videos/route.ts',
-  'src/app/api/novel-promotion/[projectId]/download-voices/route.ts',
-  'src/app/api/novel-promotion/[projectId]/update-asset-label/route.ts',
-  'src/app/api/novel-promotion/[projectId]/voice-generate/route.ts',
-  'src/app/api/novel-promotion/[projectId]/video-proxy/route.ts',
+  'src/app/api/projects/[projectId]/video-proxy/route.ts',
 ])
 
 function run(cmd: string): string {

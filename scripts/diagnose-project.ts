@@ -1,11 +1,10 @@
 /**
  * 诊断项目任务状态
- * 运行: npx tsx scripts/diagnose-project.ts <projectId>
+ * 运行: npx tsx --env-file=.env scripts/diagnose-project.ts <projectId>
  */
-import { config } from 'dotenv'
-config()
-
 import { prisma } from '../src/lib/prisma'
+import { resolveRedisRuntimeConfig } from '../src/lib/redis-config'
+import { parseFailureRecord } from '../src/lib/errors/failure'
 
 async function diagnoseProject(projectId: string) {
   console.log(`🔍 诊断项目: ${projectId}\n`)
@@ -15,7 +14,13 @@ async function diagnoseProject(projectId: string) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
-      novelPromotionData: true
+      locations: {
+        include: {
+          images: {
+            orderBy: { imageIndex: 'asc' },
+          },
+        },
+      },
     }
   })
   
@@ -25,36 +30,13 @@ async function diagnoseProject(projectId: string) {
   }
   
   console.log(`  名称: ${project.name}`)
-  console.log(`  模式: ${project.mode}`)
   console.log(`  用户ID: ${project.userId}`)
+  console.log(`  视频比例: ${project.videoRatio || '未设置'}`)
+  console.log(`  画风提示: ${project.artStylePrompt || '未设置'}`)
 
-  // 2. 检查 NovelPromotionProject
-  console.log('\n2️⃣ 小说推广项目配置:')
-  const novelData = project.novelPromotionData
-  if (!novelData) {
-    console.log('  ❌ novelPromotionData 未创建')
-  } else {
-    console.log(`  ID: ${novelData.id}`)
-    console.log(`  视频比例: ${novelData.videoRatio || '未设置'}`)
-    console.log(`  画风提示: ${novelData.artStylePrompt || '未设置'}`)
-  }
-
-  // 3. 检查场景和场景图片
-  console.log('\n3️⃣ 场景资产:')
-  const novelProjectId = novelData?.id
-  if (!novelProjectId) {
-    console.log('  ❌ 无法获取 novelPromotionProject ID')
-    process.exit(1)
-  }
-  
-  const locations = await prisma.novelPromotionLocation.findMany({
-    where: { novelPromotionProjectId: novelProjectId },
-    include: {
-      images: {
-        orderBy: { imageIndex: 'asc' }
-      }
-    }
-  })
+  // 2. 检查场景和场景图片
+  console.log('\n2️⃣ 场景资产:')
+  const locations = project.locations
   
   console.log(`  场景数量: ${locations.length}`)
   
@@ -86,8 +68,8 @@ async function diagnoseProject(projectId: string) {
     }
   }
 
-  // 4. 检查最近的任务
-  console.log('\n4️⃣ 最近的任务:')
+  // 3. 检查最近的任务
+  console.log('\n3️⃣ 最近的任务:')
   const tasks = await prisma.task.findMany({
     where: { projectId },
     orderBy: { createdAt: 'desc' },
@@ -103,9 +85,11 @@ async function diagnoseProject(projectId: string) {
     console.log(`     创建时间: ${task.createdAt}`)
     console.log(`     更新时间: ${task.updatedAt}`)
 
-    if (task.errorMessage || task.errorCode) {
-      console.log(`     ❌ 错误码: ${task.errorCode || 'N/A'}`)
-      console.log(`     ❌ 错误信息: ${task.errorMessage?.substring(0, 200) || 'N/A'}`)
+    const failure = parseFailureRecord(task.failure)
+    if (failure) {
+      console.log(`     ❌ 错误码: ${failure.interpretation.code}`)
+      console.log(`     ❌ 原始错误: ${failure.native.message.substring(0, 200)}`)
+      console.log(`     ❌ 错误来源: ${failure.context.system}`)
     }
 
     // 获取任务事件
@@ -131,25 +115,15 @@ async function diagnoseProject(projectId: string) {
   // 尝试连接 Redis
   try {
     const { Redis } = await import('ioredis')
+    const redisConfig = resolveRedisRuntimeConfig()
     const redis = new Redis({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
+      ...redisConfig,
       maxRetriesPerRequest: 3,
       connectTimeout: 5000
     })
     
     const pingResult = await redis.ping()
     console.log(`  ✅ Redis 连接: ${pingResult}`)
-    
-    // 检查 BullMQ 队列
-    const queueKeys = await redis.keys('bull:*:id')
-    console.log(`  BullMQ 队列数量: ${queueKeys.length}`)
-    
-    for (const key of queueKeys.slice(0, 5)) {
-      const queueName = key.replace('bull:', '').replace(':id', '')
-      const jobCounts = await redis.hgetall(`bull:${queueName}:id`)
-      console.log(`    - ${queueName}`)
-    }
     
     redis.disconnect()
   } catch (error) {
@@ -165,12 +139,7 @@ async function diagnoseProject(projectId: string) {
   if (!userPreference) {
     console.log('  ❌ 用户偏好配置不存在')
   } else {
-    console.log(`  角色模型: ${userPreference.characterModel || '未设置'}`)
-    console.log(`  场景模型: ${userPreference.locationModel || '未设置'}`)
-    console.log(`  视频模型: ${userPreference.videoModel || '未设置'}`)
-    console.log(`  编辑模型: ${userPreference.editModel || '未设置'}`)
-    console.log(`  口型同步模型: ${userPreference.lipSyncModel || '未设置'}`)
-    console.log(`  分析模型: ${userPreference.analysisModel || '未设置'}`)
+    console.log(`  Assistant 模型: ${userPreference.assistantModel || '未设置'}`)
   }
 
   console.log('\n✨ 诊断完成!')
@@ -180,8 +149,8 @@ async function diagnoseProject(projectId: string) {
 
 const projectId = process.argv[2]
 if (!projectId) {
-  console.log('用法: npx tsx scripts/diagnose-project.ts <projectId>')
-  console.log('示例: npx tsx scripts/diagnose-project.ts fae709e9-9215-4b3f-9f53-dad871f09896')
+  console.log('用法: npx tsx --env-file=.env scripts/diagnose-project.ts <projectId>')
+  console.log('示例: npx tsx --env-file=.env scripts/diagnose-project.ts fae709e9-9215-4b3f-9f53-dad871f09896')
   process.exit(1)
 }
 

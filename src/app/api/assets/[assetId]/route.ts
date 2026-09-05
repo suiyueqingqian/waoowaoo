@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { isErrorResponse, requireProjectAuthLight, requireUserAuth } from '@/lib/api-auth'
-import { removeAsset, updateAsset } from '@/lib/assets/services/asset-actions'
+import { isErrorResponse, requireUserAuth } from '@/lib/api-auth'
+import { executeProjectAgentOperationFromApi } from '@/lib/adapters/api/execute-project-agent-operation'
 import type { AssetKind, AssetScope } from '@/lib/assets/contracts'
+import { GLOBAL_ASSET_PROJECT_ID } from '@/lib/workspace-resource/resource-impact'
 
 type UpdateAssetBody = {
   scope?: AssetScope
   kind?: AssetKind
-  projectId?: string
 } & Record<string, unknown>
 
 function isAssetScope(value: unknown): value is AssetScope {
-  return value === 'global' || value === 'project'
+  return value === 'global'
 }
 
 function isAssetKind(value: unknown): value is AssetKind {
-  return value === 'character' || value === 'location' || value === 'prop' || value === 'voice'
+  return value === 'character' || value === 'location' || value === 'prop'
 }
 
 export const PATCH = apiHandler(async (
@@ -28,33 +28,16 @@ export const PATCH = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
-  if (body.scope === 'project') {
-    if (!body.projectId) throw new ApiError('INVALID_PARAMS')
-    const authResult = await requireProjectAuthLight(body.projectId)
-    if (isErrorResponse(authResult)) return authResult
-    const result = await updateAsset({
-      kind: body.kind,
-      assetId,
-      body,
-      access: {
-        scope: 'project',
-        userId: authResult.session.user.id,
-        projectId: body.projectId,
-      },
-    })
-    return NextResponse.json(result)
-  }
-
   const authResult = await requireUserAuth()
   if (isErrorResponse(authResult)) return authResult
-  const result = await updateAsset({
-    kind: body.kind,
-    assetId,
-    body,
-    access: {
-      scope: 'global',
-      userId: authResult.session.user.id,
-    },
+  const result = await executeProjectAgentOperationFromApi({
+    request,
+    operationId: 'api_assets_update',
+    projectId: GLOBAL_ASSET_PROJECT_ID,
+    userId: authResult.session.user.id,
+    input: { assetId, ...body },
+    source: 'asset-hub',
+    responseContract: 'operation_mutation_response_v1',
   })
   return NextResponse.json(result)
 })
@@ -62,11 +45,10 @@ export const PATCH = apiHandler(async (
 type DeleteAssetBody = {
   scope?: AssetScope
   kind?: AssetKind
-  projectId?: string
 }
 
-function isDeletableKind(value: AssetKind | undefined): value is Extract<AssetKind, 'location' | 'prop'> {
-  return value === 'location' || value === 'prop'
+function isDeletableKind(value: AssetKind | undefined): value is Extract<AssetKind, 'character' | 'location' | 'prop'> {
+  return value === 'character' || value === 'location' || value === 'prop'
 }
 
 export const DELETE = apiHandler(async (
@@ -79,31 +61,19 @@ export const DELETE = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
-  if (body.scope === 'project') {
-    if (!body.projectId) throw new ApiError('INVALID_PARAMS')
-    const authResult = await requireProjectAuthLight(body.projectId)
-    if (isErrorResponse(authResult)) return authResult
-    const result = await removeAsset({
-      kind: body.kind,
-      assetId,
-      access: {
-        scope: 'project',
-        userId: authResult.session.user.id,
-        projectId: body.projectId,
-      },
-    })
-    return NextResponse.json(result)
-  }
-
   const authResult = await requireUserAuth()
   if (isErrorResponse(authResult)) return authResult
-  const result = await removeAsset({
-    kind: body.kind,
-    assetId,
-    access: {
-      scope: 'global',
-      userId: authResult.session.user.id,
+  const result = await executeProjectAgentOperationFromApi({
+    request,
+    operationId: 'delete_asset',
+    projectId: GLOBAL_ASSET_PROJECT_ID,
+    userId: authResult.session.user.id,
+    input: {
+      target: { kind: body.kind, assetId },
+      scope: body.scope,
     },
+    source: 'asset-hub',
+    responseContract: 'operation_mutation_response_v1',
   })
   return NextResponse.json(result)
 })

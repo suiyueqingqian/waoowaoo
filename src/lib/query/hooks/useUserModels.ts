@@ -1,27 +1,10 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import type { ModelCapabilities } from '@/lib/model-config-contract'
-import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
+import type { UserModelsPayload } from '@/lib/user-api/api-config-types'
+export type { UserModelOption, UserModelsPayload } from '@/lib/user-api/api-config-types'
 import { queryKeys } from '../keys'
 import { apiFetch } from '@/lib/api-fetch'
-
-export interface UserModelOption {
-    value: string
-    label: string
-    provider?: string
-    providerName?: string
-    capabilities?: ModelCapabilities
-    videoPricingTiers?: VideoPricingTier[]
-}
-
-export interface UserModelsPayload {
-    llm: UserModelOption[]
-    image: UserModelOption[]
-    video: UserModelOption[]
-    audio: UserModelOption[]
-    lipsync: UserModelOption[]
-}
 
 export function useUserModels() {
     return useQuery({
@@ -36,8 +19,8 @@ export function useUserModels() {
                 llm: Array.isArray(data?.llm) ? data.llm : [],
                 image: Array.isArray(data?.image) ? data.image : [],
                 video: Array.isArray(data?.video) ? data.video : [],
-                audio: Array.isArray(data?.audio) ? data.audio : [],
-                lipsync: Array.isArray(data?.lipsync) ? data.lipsync : [],
+                music: Array.isArray(data?.music) ? data.music : [],
+                voice: Array.isArray(data?.voice) ? data.voice : [],
             } as UserModelsPayload
         },
     })

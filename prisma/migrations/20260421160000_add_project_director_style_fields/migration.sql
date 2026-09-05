@@ -1,0 +1,3 @@
+ALTER TABLE `projects`
+  ADD COLUMN `directorStylePresetId` VARCHAR(191) NULL,
+  ADD COLUMN `directorStyleDoc` LONGTEXT NULL;

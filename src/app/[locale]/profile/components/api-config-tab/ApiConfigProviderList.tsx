@@ -13,24 +13,17 @@ import {
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  rectSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { AppIcon } from '@/components/ui/icons'
 import type { CustomModel, Provider } from '../api-config'
 import { ProviderCard } from '../api-config'
-import { AppIcon } from '@/components/ui/icons'
 
 interface DefaultModels {
-  analysisModel?: string
-  characterModel?: string
-  locationModel?: string
-  storyboardModel?: string
-  editModel?: string
-  videoModel?: string
-  audioModel?: string
-  lipSyncModel?: string
+  assistantModel?: string
 }
 
 interface ApiConfigProviderListProps {
@@ -38,214 +31,121 @@ interface ApiConfigProviderListProps {
   allModels: CustomModel[]
   defaultModels: DefaultModels
   getModelsForProvider: (providerId: string) => CustomModel[]
-  onAddGeminiProvider: () => void
-  onToggleModel: (modelKey: string, providerId: string) => void
   onUpdateApiKey: (providerId: string, apiKey: string) => void
-  onUpdateBaseUrl: (providerId: string, baseUrl: string) => void
   onReorderProviders: (activeProviderId: string, overProviderId: string) => void
   onDeleteModel: (modelKey: string, providerId: string) => void
   onUpdateModel: (modelKey: string, updates: Partial<CustomModel>, providerId: string) => void
   onDeleteProvider: (providerId: string) => void
   onAddModel: (model: Omit<CustomModel, 'enabled'>) => void
-  onFlushConfig: () => Promise<void>
-  onToggleProviderHidden: (providerId: string, hidden: boolean) => void
   labels: {
     providerPool: string
-    providerPoolDesc: string
+    providerPoolHint: string
     dragToSort: string
-    dragToSortHint: string
-    hideProvider: string
-    showProvider: string
-    showHiddenProviders: string
-    hideHiddenProviders: string
-    hiddenProvidersPrefix: string
-    addGeminiProvider: string
+    moreProviders: string
   }
 }
 
-export function ApiConfigProviderList({
-  modelProviders,
-  allModels,
-  defaultModels,
-  getModelsForProvider,
-  onAddGeminiProvider,
-  onToggleModel,
-  onUpdateApiKey,
-  onUpdateBaseUrl,
-  onReorderProviders,
-  onDeleteModel,
-  onUpdateModel,
-  onDeleteProvider,
-  onAddModel,
-  onFlushConfig,
-  onToggleProviderHidden,
-  labels,
-}: ApiConfigProviderListProps) {
-  const [showHiddenProviders, setShowHiddenProviders] = useState(false)
+/** Credentials and the custom model catalog; model choice happens in the slots above. */
+export function ApiConfigProviderList(props: ApiConfigProviderListProps) {
+  const { modelProviders, allModels, getModelsForProvider, labels } = props
+  const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null)
+  const [showMoreProviders, setShowMoreProviders] = useState(false)
+
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    props.onReorderProviders(String(active.id), String(over.id))
+  }, [props])
 
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event
-      if (!over || active.id === over.id) return
-      onReorderProviders(String(active.id), String(over.id))
-    },
-    [onReorderProviders],
+  const extensionProviders = useMemo(
+    () => modelProviders.filter((provider) => provider.featured !== true && !provider.hasApiKey),
+    [modelProviders],
   )
+  const primaryProviders = useMemo(() => {
+    const extensionIds = new Set(extensionProviders.map((provider) => provider.id))
+    return modelProviders.filter((provider) => !extensionIds.has(provider.id))
+  }, [extensionProviders, modelProviders])
 
-  const providerModelsById = useMemo(() => {
-    const map = new Map<string, CustomModel[]>()
-    for (const provider of modelProviders) {
-      map.set(provider.id, getModelsForProvider(provider.id))
-    }
-    return map
-  }, [getModelsForProvider, modelProviders])
-
-  const hiddenProviders = useMemo(() => {
-    return modelProviders.filter((provider) => provider.hidden === true)
-  }, [modelProviders])
-
-  const visibleProviders = useMemo(() => {
-    const hiddenIds = new Set(hiddenProviders.map((provider) => provider.id))
-    return modelProviders.filter((provider) => !hiddenIds.has(provider.id))
-  }, [hiddenProviders, modelProviders])
-
-  const hiddenProviderNames = hiddenProviders.map((provider) => provider.name).join(' / ')
+  const renderCard = (provider: Provider, dragHandle?: ReactNode) => (
+    <ProviderCard
+      provider={provider}
+      dragHandle={dragHandle}
+      models={getModelsForProvider(provider.id)}
+      allModels={allModels}
+      defaultModels={props.defaultModels}
+      expanded={expandedProviderId === provider.id}
+      onExpandChange={(expanded) => setExpandedProviderId(expanded ? provider.id : null)}
+      onUpdateApiKey={props.onUpdateApiKey}
+      onDeleteModel={(modelKey) => props.onDeleteModel(modelKey, provider.id)}
+      onUpdateModel={(modelKey, updates) => props.onUpdateModel(modelKey, updates, provider.id)}
+      onDeleteProvider={props.onDeleteProvider}
+      onAddModel={props.onAddModel}
+    />
+  )
 
   return (
-    <>
-      <div className="space-y-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="glass-surface-soft inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--glass-text-secondary)]">
-              <AppIcon name="cube" className="w-4 h-4" />
-            </span>
-            <div>
-              <h2 className="text-xl font-bold text-[var(--glass-text-primary)]">{labels.providerPool}</h2>
-              <p className="text-[13px] text-[var(--glass-text-secondary)]">{labels.providerPoolDesc}</p>
-              <p className="text-[12px] text-[var(--glass-text-tertiary)]">{labels.dragToSortHint}</p>
-            </div>
-          </div>
-          <button
-            onClick={onAddGeminiProvider}
-            className="glass-btn-base glass-btn-primary cursor-pointer px-3 py-1.5 text-sm font-semibold"
-          >
-            {labels.addGeminiProvider}
-          </button>
+    <div id="provider-pool-section" className="space-y-4 scroll-mt-6">
+      <div className="flex items-center gap-2.5">
+        <span className="glass-surface-soft inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--glass-text-secondary)]">
+          <AppIcon name="cube" className="h-4 w-4" />
+        </span>
+        <div>
+          <h2 className="text-xl font-bold text-[var(--glass-text-primary)]">{labels.providerPool}</h2>
+          <p className="mt-1 text-[13px] text-[var(--glass-text-secondary)]">{labels.providerPoolHint}</p>
         </div>
+      </div>
+      <div className="glass-surface glass-card-shadow-soft overflow-hidden rounded-2xl">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={visibleProviders.map((provider) => provider.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {visibleProviders.map((provider) => (
-                <SortableProviderCardItem key={provider.id} providerId={provider.id} dragLabel={labels.dragToSort}>
-                  {({ dragHandle }) => (
-                    <ProviderCard
-                      provider={provider}
-                      dragHandle={dragHandle}
-                      models={providerModelsById.get(provider.id) || []}
-                      allModels={allModels}
-                      defaultModels={defaultModels}
-                      onToggleModel={(modelKey) => onToggleModel(modelKey, provider.id)}
-                      onUpdateApiKey={onUpdateApiKey}
-                      onUpdateBaseUrl={onUpdateBaseUrl}
-                      onDeleteModel={(modelKey) => onDeleteModel(modelKey, provider.id)}
-                      onUpdateModel={(modelKey, updates) => onUpdateModel(modelKey, updates, provider.id)}
-                      onDeleteProvider={onDeleteProvider}
-                      onAddModel={onAddModel}
-                      onFlushConfig={onFlushConfig}
-                      onToggleProviderHidden={onToggleProviderHidden}
-                      hideProviderLabel={labels.hideProvider}
-                      showProviderLabel={labels.showProvider}
-                    />
-                  )}
-                </SortableProviderCardItem>
-              ))}
-            </div>
+          <SortableContext items={primaryProviders.map((provider) => provider.id)} strategy={verticalListSortingStrategy}>
+            {primaryProviders.map((provider) => (
+              <SortableProviderRow key={provider.id} providerId={provider.id} dragLabel={labels.dragToSort}>
+                {({ dragHandle }) => renderCard(provider, dragHandle)}
+              </SortableProviderRow>
+            ))}
           </SortableContext>
         </DndContext>
-        {hiddenProviders.length > 0 && (
+        {extensionProviders.length > 0 && (
           <>
             <button
               type="button"
-              onClick={() => setShowHiddenProviders((prev) => !prev)}
-              className="glass-btn-base glass-btn-secondary flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left"
+              aria-expanded={showMoreProviders}
+              onClick={() => setShowMoreProviders((prev) => !prev)}
+              className="flex w-full items-center justify-between border-t border-[var(--glass-stroke-base)] px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--glass-text-tertiary)] transition-colors hover:text-[var(--glass-text-secondary)]"
             >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-[var(--glass-text-primary)]">
-                  {showHiddenProviders
-                    ? labels.hideHiddenProviders
-                    : `${labels.showHiddenProviders} (${hiddenProviders.length})`}
-                </p>
-                <p className="truncate text-xs text-[var(--glass-text-tertiary)]">
-                  {labels.hiddenProvidersPrefix}: {hiddenProviderNames}
-                </p>
-              </div>
-              <AppIcon
-                name={showHiddenProviders ? 'chevronUp' : 'chevronDown'}
-                className="h-4 w-4 shrink-0 text-[var(--glass-text-secondary)]"
-              />
+              <span>{labels.moreProviders} · {extensionProviders.length}</span>
+              <AppIcon name={showMoreProviders ? 'chevronUp' : 'chevronDown'} className="h-3.5 w-3.5" />
             </button>
-            {showHiddenProviders && (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {hiddenProviders.map((provider) => (
-                  <ProviderCard
-                    key={`hidden-${provider.id}`}
-                    provider={provider}
-                    models={providerModelsById.get(provider.id) || []}
-                    allModels={allModels}
-                    defaultModels={defaultModels}
-                    onToggleModel={(modelKey) => onToggleModel(modelKey, provider.id)}
-                    onUpdateApiKey={onUpdateApiKey}
-                    onUpdateBaseUrl={onUpdateBaseUrl}
-                    onDeleteModel={(modelKey) => onDeleteModel(modelKey, provider.id)}
-                    onUpdateModel={(modelKey, updates) => onUpdateModel(modelKey, updates, provider.id)}
-                    onDeleteProvider={onDeleteProvider}
-                    onAddModel={onAddModel}
-                    onFlushConfig={onFlushConfig}
-                    onToggleProviderHidden={onToggleProviderHidden}
-                    hideProviderLabel={labels.hideProvider}
-                    showProviderLabel={labels.showProvider}
-                  />
-                ))}
+            {showMoreProviders && extensionProviders.map((provider) => (
+              <div key={provider.id} className="border-t border-[var(--glass-stroke-base)]">
+                {renderCard(provider)}
               </div>
-            )}
+            ))}
           </>
         )}
       </div>
-    </>
+    </div>
   )
 }
 
-interface SortableProviderCardItemProps {
+interface SortableProviderRowProps {
   providerId: string
   dragLabel: string
   children: (props: { dragHandle: ReactNode }) => ReactNode
 }
 
-function SortableProviderCardItem({ providerId, dragLabel, children }: SortableProviderCardItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: providerId })
-
+function SortableProviderRow({ providerId, dragLabel, children }: SortableProviderRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: providerId })
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.9 : 1,
     zIndex: isDragging ? 20 : 1,
+    position: 'relative',
+    background: isDragging ? 'var(--glass-bg-surface-strong)' : undefined,
   }
 
   return (
@@ -256,7 +156,7 @@ function SortableProviderCardItem({ providerId, dragLabel, children }: SortableP
             type="button"
             aria-label={dragLabel}
             title={dragLabel}
-            className="inline-flex cursor-grab items-center justify-center rounded-md p-1 text-[var(--glass-text-tertiary)] touch-none transition-colors hover:text-[var(--glass-text-secondary)] active:cursor-grabbing"
+            className="inline-flex shrink-0 cursor-grab items-center justify-center rounded-md p-1 text-[var(--glass-text-tertiary)] touch-none transition-colors hover:text-[var(--glass-text-secondary)] active:cursor-grabbing"
             {...attributes}
             {...listeners}
           >

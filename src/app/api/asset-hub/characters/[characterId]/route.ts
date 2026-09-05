@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { ApiError, apiHandler } from '@/lib/api-errors'
-import {
-    collectBailianManagedVoiceIds,
-    cleanupUnreferencedBailianVoices,
-} from '@/lib/providers/bailian'
+import { executeProjectAgentOperationFromApi } from '@/lib/adapters/api/execute-project-agent-operation'
+import { GLOBAL_ASSET_PROJECT_ID } from '@/lib/workspace-resource/resource-impact'
 
 // 获取单个角色
 export const GET = apiHandler(async (
@@ -14,21 +11,20 @@ export const GET = apiHandler(async (
 ) => {
     const { characterId } = await context.params
 
-    // 🔐 统一权限验证
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
     const { session } = authResult
 
-    const character = await prisma.globalCharacter.findUnique({
-        where: { id: characterId },
-        include: { appearances: true }
+    const result = await executeProjectAgentOperationFromApi({
+      request,
+      operationId: 'asset_hub_get_character',
+      projectId: GLOBAL_ASSET_PROJECT_ID,
+      userId: session.user.id,
+      input: { characterId },
+      source: 'asset-hub',
     })
 
-    if (!character || character.userId !== session.user.id) {
-        throw new ApiError('NOT_FOUND')
-    }
-
-    return NextResponse.json({ character })
+    return NextResponse.json(result)
 })
 
 // 更新角色
@@ -38,50 +34,35 @@ export const PATCH = apiHandler(async (
 ) => {
     const { characterId } = await context.params
 
-    // 🔐 统一权限验证
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
     const { session } = authResult
 
-    const character = await prisma.globalCharacter.findUnique({
-        where: { id: characterId }
-    })
-
-    if (!character || character.userId !== session.user.id) {
-        throw new ApiError('FORBIDDEN')
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'BODY_PARSE_FAILED',
+        field: 'body',
+        message: 'request body must be valid JSON',
+      })
     }
 
-    const body = await request.json()
-    const { name, aliases, profileData, profileConfirmed, voiceId, voiceType, customVoiceUrl, folderId, globalVoiceId } = body
-
-    const updateData: Record<string, unknown> = {}
-    if (name !== undefined) updateData.name = name.trim()
-    if (aliases !== undefined) updateData.aliases = aliases
-    if (profileData !== undefined) updateData.profileData = profileData
-    if (profileConfirmed !== undefined) updateData.profileConfirmed = profileConfirmed
-    if (voiceId !== undefined) updateData.voiceId = voiceId
-    if (voiceType !== undefined) updateData.voiceType = voiceType
-    if (customVoiceUrl !== undefined) updateData.customVoiceUrl = customVoiceUrl
-    if (globalVoiceId !== undefined) updateData.globalVoiceId = globalVoiceId
-    if (folderId !== undefined) {
-        if (folderId) {
-            const folder = await prisma.globalAssetFolder.findUnique({
-                where: { id: folderId }
-            })
-            if (!folder || folder.userId !== session.user.id) {
-                throw new ApiError('INVALID_PARAMS')
-            }
-        }
-        updateData.folderId = folderId || null
-    }
-
-    const updatedCharacter = await prisma.globalCharacter.update({
-        where: { id: characterId },
-        data: updateData,
-        include: { appearances: true }
+    const result = await executeProjectAgentOperationFromApi({
+      request,
+      operationId: 'asset_hub_update_character',
+      projectId: GLOBAL_ASSET_PROJECT_ID,
+      userId: session.user.id,
+      input: {
+        ...(body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {}),
+        characterId,
+      },
+      source: 'asset-hub',
+      responseContract: 'operation_mutation_response_v1',
     })
 
-    return NextResponse.json({ success: true, character: updatedCharacter })
+    return NextResponse.json(result)
 })
 
 // 删除角色
@@ -91,36 +72,22 @@ export const DELETE = apiHandler(async (
 ) => {
     const { characterId } = await context.params
 
-    // 🔐 统一权限验证
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
     const { session } = authResult
 
-    const character = await prisma.globalCharacter.findUnique({
-        where: { id: characterId }
+    const result = await executeProjectAgentOperationFromApi({
+      request,
+      operationId: 'delete_asset',
+      projectId: GLOBAL_ASSET_PROJECT_ID,
+      userId: session.user.id,
+      input: {
+        target: { kind: 'character', assetId: characterId },
+        scope: 'global',
+      },
+      source: 'asset-hub',
+      responseContract: 'operation_mutation_response_v1',
     })
 
-    if (!character || character.userId !== session.user.id) {
-        throw new ApiError('FORBIDDEN')
-    }
-
-    const candidateVoiceIds = collectBailianManagedVoiceIds([
-        {
-            voiceId: character.voiceId,
-            voiceType: character.voiceType,
-        },
-    ])
-    await cleanupUnreferencedBailianVoices({
-        voiceIds: candidateVoiceIds,
-        scope: {
-            userId: session.user.id,
-            excludeGlobalCharacterId: character.id,
-        },
-    })
-
-    await prisma.globalCharacter.delete({
-        where: { id: characterId }
-    })
-
-    return NextResponse.json({ success: true })
+    return NextResponse.json(result)
 })

@@ -47,6 +47,18 @@
   border-radius: var(--glass-radius-lg);
 }
 
+.glass-card-shadow-soft {
+  box-shadow:
+    0 3px 9px rgba(15, 23, 42, 0.075),
+    0 1px 3px rgba(15, 23, 42, 0.045) !important;
+}
+
+.glass-card-shadow-soft:hover {
+  box-shadow:
+    0 4px 12px rgba(15, 23, 42, 0.085),
+    0 1px 4px rgba(15, 23, 42, 0.05) !important;
+}
+
 .glass-divider {
   border-top: 1px solid var(--glass-stroke-base);
 }
@@ -91,9 +103,7 @@
 .glass-input-base:focus-visible,
 .glass-textarea-base:focus-visible,
 .glass-select-base:focus-visible {
-  box-shadow:
-    inset 0 0 0 1px var(--glass-stroke-focus),
-    0 0 0 3px var(--glass-focus-ring);
+  box-shadow: inset 0 0 0 1px var(--glass-stroke-focus);
   background: var(--glass-bg-surface-strong);
 }
 
@@ -177,54 +187,70 @@
   background: var(--glass-ghost-hover-bg);
 }
 
-.glass-btn-danger {
-  background: rgba(246, 119, 119, 0.14);
-  color: var(--glass-tone-danger-fg);
-  box-shadow: inset 0 0 0 1px rgba(246, 119, 119, 0.32);
+/* Tone buttons share one white surface and one shadow; only the ink differs.
+   Hover lifts the shadow instead of darkening a fill — there is no fill left
+   to darken, and tinting the surface would put the colour back on the block. */
+.glass-btn-danger,
+.glass-btn-tone-info,
+.glass-btn-tone-success,
+.glass-btn-tone-warning,
+.glass-btn-tone-danger {
+  background: var(--glass-tone-surface);
+  box-shadow: var(--glass-tone-shadow);
 }
 
-.glass-btn-danger:hover:not(:disabled) {
-  background: rgba(246, 119, 119, 0.22);
+.glass-btn-danger:hover:not(:disabled),
+.glass-btn-tone-info:hover:not(:disabled),
+.glass-btn-tone-success:hover:not(:disabled),
+.glass-btn-tone-warning:hover:not(:disabled),
+.glass-btn-tone-danger:hover:not(:disabled) {
+  box-shadow: var(--glass-tone-shadow-hover);
+}
+
+.glass-btn-danger,
+.glass-btn-tone-danger {
+  color: var(--glass-tone-danger-fg);
 }
 
 .glass-btn-tone-info {
-  background: var(--glass-tone-info-bg);
   color: var(--glass-tone-info-fg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--glass-tone-info-fg) 24%, transparent);
-}
-
-.glass-btn-tone-info:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--glass-tone-info-bg) 85%, white);
 }
 
 .glass-btn-tone-success {
-  background: var(--glass-tone-success-bg);
   color: var(--glass-tone-success-fg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--glass-tone-success-fg) 24%, transparent);
-}
-
-.glass-btn-tone-success:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--glass-tone-success-bg) 85%, white);
 }
 
 .glass-btn-tone-warning {
-  background: var(--glass-tone-warning-bg);
   color: var(--glass-tone-warning-fg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--glass-tone-warning-fg) 24%, transparent);
 }
 
-.glass-btn-tone-warning:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--glass-tone-warning-bg) 85%, white);
+.glass-selection-control {
+  cursor: pointer;
+  border: 1px solid transparent;
+  color: var(--glass-text-secondary);
+  transition: all 0.2s ease;
 }
 
-.glass-btn-tone-danger {
-  background: var(--glass-tone-danger-bg);
-  color: var(--glass-tone-danger-fg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--glass-tone-danger-fg) 24%, transparent);
+.glass-selection-control:hover:not(:disabled) {
+  background: var(--glass-selection-hover-bg);
+  color: var(--glass-text-primary);
 }
 
-.glass-btn-tone-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--glass-tone-danger-bg) 85%, white);
+.glass-selection-control[data-active='true'] {
+  border-color: transparent;
+  background: var(--glass-selection-hover-bg);
+  color: var(--glass-text-primary);
+}
+
+.glass-selection-active {
+  border-color: transparent;
+  background: var(--glass-selection-hover-bg);
+  color: var(--glass-text-primary);
+}
+
+.glass-selection-control:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--glass-selection-focus-ring);
 }
 
 .glass-chip {
@@ -235,31 +261,220 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
+  /* Every chip shares one surface; the variant only supplies the ink, so a
+     caller with its own ink (a plan tier, say) can use .glass-chip alone. */
+  background: var(--glass-tone-surface);
+  color: var(--glass-tone-neutral-fg);
+  box-shadow: var(--glass-tone-shadow);
 }
 
 .glass-chip-neutral {
-  background: var(--glass-tone-neutral-bg);
   color: var(--glass-tone-neutral-fg);
 }
 
 .glass-chip-info {
-  background: var(--glass-tone-info-bg);
   color: var(--glass-tone-info-fg);
 }
 
 .glass-chip-success {
-  background: var(--glass-tone-success-bg);
   color: var(--glass-tone-success-fg);
 }
 
 .glass-chip-warning {
-  background: var(--glass-tone-warning-bg);
   color: var(--glass-tone-warning-fg);
 }
 
 .glass-chip-danger {
-  background: var(--glass-tone-danger-bg);
   color: var(--glass-tone-danger-fg);
+}
+
+/* V3 — Arc/Raycast creative-tool surfaces */
+
+/* Full-height glass tower hugging the right viewport edge. */
+.glass-tower {
+  background: var(--glass-tower-bg);
+  border-top-left-radius: var(--glass-tower-radius);
+  border-bottom-left-radius: var(--glass-tower-radius);
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-left: 1px solid var(--glass-tower-highlight);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.6),
+    var(--glass-tower-shadow);
+  backdrop-filter: blur(var(--glass-tower-blur)) saturate(var(--glass-tower-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-tower-blur)) saturate(var(--glass-tower-saturate));
+}
+
+/* Compact tool capsule (dock) — icon-first cluster, Arc sidebar style. */
+.glass-dock-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 999px;
+  background: var(--glass-dock-bg);
+  border: 1px solid var(--glass-stroke-soft);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    var(--glass-dock-shadow);
+  backdrop-filter: blur(var(--glass-dock-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-dock-blur)) saturate(1.4);
+}
+
+.glass-dock-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  color: var(--glass-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.glass-dock-item:hover {
+  background: var(--glass-selection-hover-bg);
+  color: var(--glass-text-primary);
+}
+
+.glass-dock-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--glass-focus-ring-strong);
+}
+
+/* Raycast-style settings popover card. */
+.glass-menu-card {
+  background: var(--glass-menu-card-bg);
+  border: 1px solid var(--glass-stroke-soft);
+  border-radius: var(--glass-radius-md);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    var(--glass-menu-card-shadow);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+}
+
+.glass-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--glass-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+
+.glass-menu-item:hover {
+  background: var(--glass-selection-hover-bg);
+  color: var(--glass-text-primary);
+}
+
+.glass-menu-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--glass-selection-focus-ring);
+}
+
+.glass-menu-item-danger,
+.glass-menu-item-danger:hover {
+  color: var(--glass-tone-danger-fg);
+}
+
+/* A menu row hovers neutral like every other row; only its ink says danger.
+   The tone surface is white now, which would read as "no hover" here. */
+.glass-menu-item-danger:hover {
+  background: var(--glass-selection-hover-bg);
+}
+
+/* Gradient CTA — reserved for key actions (upgrade / primary CTA). */
+.glass-btn-cta {
+  background: var(--glass-cta-gradient);
+  border: none;
+  color: var(--glass-text-on-accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    var(--glass-cta-shadow);
+}
+
+.glass-btn-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    var(--glass-cta-shadow-hover);
+}
+
+/* Large stat number: system ink, not an accent fill. */
+.glass-stat-figure {
+  color: var(--glass-text-primary);
+}
+
+/* Thin usage meter (balance vs. spent). */
+.glass-meter-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--glass-meter-track);
+  overflow: hidden;
+}
+
+.glass-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--glass-cta-gradient);
+  transition: width 0.2s ease-out;
+}
+
+/* Stripe-dashboard style table treatment (white body inside glass cards). */
+.glass-table-card {
+  background: #ffffff;
+  border: 1px solid var(--glass-stroke-base);
+  border-radius: var(--glass-radius-sm);
+  overflow: hidden;
+}
+
+.glass-table {
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  border-collapse: collapse;
+}
+
+.glass-table thead th {
+  padding: 10px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--glass-text-tertiary);
+  background: rgba(15, 23, 42, 0.025);
+  border-bottom: 1px solid var(--glass-stroke-base);
+  white-space: nowrap;
+}
+
+.glass-table tbody td {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(111, 126, 153, 0.14);
+  vertical-align: top;
+}
+
+.glass-table tbody tr:first-child td {
+  border-top: none;
+}
+
+.glass-table tbody tr {
+  transition: background-color 0.15s ease-out;
+}
+
+.glass-table tbody tr:hover {
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.glass-num {
+  font-variant-numeric: tabular-nums;
 }
 
 .glass-density-compact {

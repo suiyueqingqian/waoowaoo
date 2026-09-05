@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
 set -e
 
-npm run verify:push
+npm run security:secrets:repo
+npm run verify:push:local

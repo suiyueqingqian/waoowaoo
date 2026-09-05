@@ -1,22 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useRef, type CompositionEvent, type ReactNode } from 'react'
-import { RatioSelector, StylePresetSelector, StyleSelector } from '@/components/selectors/RatioStyleSelectors'
+import { useCallback, useEffect, useRef, type ClipboardEvent, type CompositionEvent, type ReactNode } from 'react'
 import { resolveTextareaTargetHeight } from '@/lib/ui/textarea-height'
-
-interface StoryInputComposerOption {
-  value: string
-  label: string
-  recommended?: boolean
-}
-
-interface StoryInputComposerStylePresetOption {
-  value: string
-  label: string
-  description: string
-}
+import { submitFromEnterKey } from '@/lib/ui/keyboard-submit'
 
 interface StoryInputComposerProps {
+  variant?: 'surface' | 'plain'
   value: string
   onValueChange: (value: string) => void
   placeholder: string
@@ -27,22 +16,20 @@ interface StoryInputComposerProps {
   footer?: ReactNode
   secondaryActions?: ReactNode
   primaryAction: ReactNode
-  videoRatio: string
-  onVideoRatioChange: (value: string) => void
-  ratioOptions: StoryInputComposerOption[]
-  getRatioUsage?: (ratio: string) => string
-  artStyle: string
-  onArtStyleChange: (value: string) => void
-  styleOptions: StoryInputComposerOption[]
-  stylePresetValue: string
-  onStylePresetChange: (value: string) => void
-  stylePresetOptions: readonly StoryInputComposerStylePresetOption[]
+  onSubmit?: () => void | Promise<void>
+  onPaste?: (event: ClipboardEvent<HTMLTextAreaElement>) => void
   onCompositionStart?: () => void
   onCompositionEnd?: (event: CompositionEvent<HTMLTextAreaElement>) => void
   textareaClassName?: string
+  containerClassName?: string
+  textareaShellClassName?: string
+  controlsClassName?: string
+  actionsClassName?: string
+  footerClassName?: string
 }
 
 export default function StoryInputComposer({
+  variant = 'surface',
   value,
   onValueChange,
   placeholder,
@@ -53,19 +40,16 @@ export default function StoryInputComposer({
   footer,
   secondaryActions,
   primaryAction,
-  videoRatio,
-  onVideoRatioChange,
-  ratioOptions,
-  getRatioUsage,
-  artStyle,
-  onArtStyleChange,
-  styleOptions,
-  stylePresetValue,
-  onStylePresetChange,
-  stylePresetOptions,
+  onSubmit,
+  onPaste,
   onCompositionStart,
   onCompositionEnd,
   textareaClassName,
+  containerClassName,
+  textareaShellClassName,
+  controlsClassName,
+  actionsClassName,
+  footerClassName,
 }: StoryInputComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const textareaMinHeightRef = useRef<number | null>(null)
@@ -107,9 +91,29 @@ export default function StoryInputComposer({
     autoResizeTextarea()
   }, [value, autoResizeTextarea])
 
+  const isPlain = variant === 'plain'
+  const resolvedContainerClassName = containerClassName ?? (isPlain
+    ? 'relative w-full'
+    : 'relative w-full glass-surface-elevated rounded-2xl')
+  const textareaShell = textareaShellClassName ?? (isPlain ? '' : 'p-6 pb-4')
+  const textareaClass = textareaClassName ?? (
+    isPlain
+      ? 'min-h-[220px] rounded-lg border border-[var(--glass-stroke-base)] bg-white px-4 py-4 text-sm leading-6'
+      : 'p-5 pb-3'
+  )
+  const controlsClass = controlsClassName ?? (
+    isPlain
+      ? 'mt-3 flex items-center gap-2 overflow-x-auto'
+      : 'flex items-center gap-2 overflow-x-auto px-5 pb-4'
+  )
+  const footerClass = footerClassName ?? (isPlain ? 'mt-2' : 'px-6 pb-4')
+  const textareaBaseClassName = isPlain
+    ? 'w-full resize-none text-[var(--glass-text-primary)] outline-none placeholder:text-[var(--glass-text-tertiary)] app-scrollbar'
+    : 'w-full resize-none border-none bg-transparent text-base text-[var(--glass-text-primary)] outline-none placeholder:text-[var(--glass-text-tertiary)] app-scrollbar'
+
   return (
-    <div className="relative w-full glass-surface-elevated rounded-2xl">
-      <div className="p-6 pb-4">
+    <div className={resolvedContainerClassName}>
+      <div className={textareaShell}>
         {topRight && (
           <div className="mb-3 flex items-center justify-end">
             {topRight}
@@ -120,50 +124,29 @@ export default function StoryInputComposer({
           ref={textareaRef}
           value={value}
           onChange={(event) => onValueChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (!onSubmit) return
+            submitFromEnterKey(event, () => { void onSubmit() })
+          }}
+          onPaste={onPaste}
           onCompositionStart={onCompositionStart}
           onCompositionEnd={onCompositionEnd}
           placeholder={placeholder}
           rows={minRows}
           disabled={disabled}
-          className={`w-full resize-none border-none bg-transparent text-base text-[var(--glass-text-primary)] outline-none placeholder:text-[var(--glass-text-tertiary)] app-scrollbar ${textareaClassName ?? 'p-5 pb-3'}`}
+          className={`${textareaBaseClassName} ${textareaClass}`}
         />
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto px-5 pb-4">
-        <div className="flex min-w-max flex-1 items-center gap-2">
-          <div className="w-[118px] flex-shrink-0">
-            <RatioSelector
-              value={videoRatio}
-              onChange={onVideoRatioChange}
-              options={ratioOptions}
-              getUsage={getRatioUsage}
-            />
-          </div>
-          <div className="w-[132px] flex-shrink-0">
-            <StyleSelector
-              value={artStyle}
-              onChange={onArtStyleChange}
-              options={styleOptions}
-            />
-          </div>
-          {stylePresetOptions.length > 0 ? (
-            <div className="w-[152px] flex-shrink-0">
-              <StylePresetSelector
-                value={stylePresetValue}
-                onChange={onStylePresetChange}
-                options={stylePresetOptions}
-              />
-            </div>
-          ) : null}
-        </div>
-        <div className="ml-auto flex min-w-max items-center gap-2">
+      <div className={controlsClass}>
+        <div className={actionsClassName ?? 'ml-auto flex min-w-max items-center gap-2'}>
           {secondaryActions}
           {primaryAction}
         </div>
       </div>
 
       {footer && (
-        <div className="px-6 pb-4">
+        <div className={footerClass}>
           {footer}
         </div>
       )}

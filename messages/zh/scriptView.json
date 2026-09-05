@@ -35,7 +35,7 @@
         "clickToRemove": "点击移除 {name}",
         "clickToAdd": "点击添加 {name}"
     },
-    "screenplay": {
+    "bible": {
         "scene": "场景 {number}",
         "location": "场景：",
         "locationTime": "时间：",
@@ -46,6 +46,7 @@
         "dialogue": "对白",
         "action": "动作",
         "narration": "旁白",
+        "convertToAction": "改为画面描述",
         "content": "原文内容",
         "noContent": "暂无内容",
         "clickToEdit": "点击编辑",

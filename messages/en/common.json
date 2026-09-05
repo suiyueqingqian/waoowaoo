@@ -1,6 +1,7 @@
 {
     "appName": "waoowaoo",
     "betaVersion": "Beta v{version}",
+    "betaBadge": "BETA",
     "updateNotice": {
         "title": "New version available",
         "subtitle": "Current v{current} · Latest v{latest}",
@@ -32,6 +33,8 @@
     "generate": "Generate",
     "regenerate": "Regenerate",
     "preview": "Preview",
+    "play": "Play",
+    "pause": "Pause",
     "download": "Download",
     "upload": "Upload",
     "select": "Select",
@@ -51,16 +54,13 @@
     "apply": "Apply",
     "autoSave": "Auto-save",
     "saved": "Saved",
-    "episode": "Episode",
     "project": "Project",
-    "editEpisodeName": "Edit Episode Name",
-    "deleteEpisode": "Delete Episode",
-    "deleteEpisodeConfirm": "Confirm Delete",
-    "newEpisode": "New Episode",
+    "editProjectName": "Edit Project Name",
+    "projectNamePlaceholder": "Enter project name...",
+    "projectRenameFailed": "Failed to save project name",
     "optional": "(Optional)",
     "rename": "Rename",
     "dragToReorder": "Drag to reorder",
-    "episodeNamePlaceholder": "Enter episode name...",
     "cancelSelection": "Cancel selection",
     "referenceImage": "Reference image",
     "previewLarge": "Preview large",
@@ -80,6 +80,7 @@
         "switchConfirmAction": "Switch now"
     },
     "taskStatus": {
+        "progressLabel": "Generation progress",
         "intent": {
             "generate": {
                 "running": {
@@ -139,6 +140,7 @@
             }
         },
         "failed": {
+            "generic": "Generation failed",
             "image": "Failed",
             "video": "Failed",
             "audio": "Failed",

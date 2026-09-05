@@ -1,76 +1,57 @@
-/**
- * Billing cost center.
- *
- * Pricing is resolved from unified pricing catalog only.
- * No implicit fallback to hardcoded model tables is allowed.
- */
-
+import { ensureAiCatalogsRegistered } from '@/lib/ai-exec/catalog-bootstrap'
+import {
+  resolveBuiltinPricing,
+  type PricingResolution,
+} from '@/lib/ai-registry/pricing-resolution'
+import type { CapabilityValue } from '@/lib/ai-registry/types'
+import { resolveImageSizeFromGenerationOptions } from '@/lib/image-generation/runtime-options'
 import { BillingOperationError } from './errors'
-import {
-  parseModelKeyStrict,
-  type CapabilityValue,
-  type ModelCapabilities,
-} from '@/lib/model-config-contract'
-import {
-  findBuiltinCapabilities,
-  listBuiltinCapabilityCatalog,
-} from '@/lib/model-capabilities/catalog'
-import { validateCapabilitySelectionForModel } from '@/lib/model-capabilities/lookup'
-import { resolveBuiltinPricing } from '@/lib/model-pricing/lookup'
-import type { PricingApiType } from '@/lib/model-pricing/catalog'
 
-export const USD_TO_CNY = 7.2
+export type ApiType = 'text' | 'image' | 'video' | 'music' | 'voice'
+export type UsageUnit = 'token' | 'image' | 'video' | 'second' | 'call' | 'character'
 
-export const MARKUP = {
-  global: 1.0,
-  text: 1.0,
-  image: 1.0,
-  video: 1.0,
-  voice: 1.0,
-  voiceDesign: 1.0,
-  lipSync: 1.0,
-} as const
-
-export type MarkupCategory = keyof typeof MARKUP
-
-export type ApiType = 'text' | 'image' | 'video' | 'voice' | 'voice-design' | 'lip-sync'
-export type UsageUnit = 'token' | 'image' | 'video' | 'second' | 'call'
-
-export interface LlmCustomPricing {
-  inputPerMillion?: number
-  outputPerMillion?: number
+type BillingMetadata = { [field: string]: unknown }
+type TextCacheCostMetadata = {
+  cachedInputTokens?: number
 }
 
-export interface MediaCustomPricing {
-  basePrice?: number
-  optionPrices?: Record<string, Record<string, number>>
+const GOOGLE_CONTEXT_CACHE_INPUT_PRICE_MULTIPLIER = 0.1
+
+function normalizePositiveInteger(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.floor(value))
 }
 
-export interface ModelCustomPricing {
-  llm?: LlmCustomPricing
-  image?: MediaCustomPricing
-  video?: MediaCustomPricing
+function normalizePositiveNumber(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, value)
 }
 
-const DEFAULT_VOICE_MODEL_ID = 'index-tts2'
-const DEFAULT_VOICE_DESIGN_MODEL_ID = 'bailian-voice-design'
-const DEFAULT_LIP_SYNC_MODEL_ID = 'kling'
-
-function getMarkup(category: MarkupCategory): number {
-  return MARKUP[category] ?? MARKUP.global
+function readNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
 }
 
-function parseModelId(model: string): string {
-  const parsed = parseModelKeyStrict(model)
-  return parsed?.modelId || model
+function resolveDurationSeconds(metadata?: BillingMetadata): number | null {
+  const duration = readNumber(metadata?.duration)
+  if (duration !== null && duration > 0) return duration
+  const durationSeconds = readNumber(metadata?.durationSeconds)
+  if (durationSeconds !== null && durationSeconds > 0) return durationSeconds
+  return null
 }
 
-function normalizeCapabilitySelections(
-  metadata: Record<string, unknown> | undefined,
-): Record<string, CapabilityValue> {
-  if (!metadata) return {}
+function roundCredits(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.round(Math.max(0, value) * 1_000_000) / 1_000_000
+}
 
+function toCapabilitySelections(metadata?: BillingMetadata): Record<string, CapabilityValue> {
   const selections: Record<string, CapabilityValue> = {}
+  if (!metadata) return selections
   for (const [field, value] of Object.entries(metadata)) {
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
       selections[field] = value
@@ -79,663 +60,255 @@ function normalizeCapabilitySelections(
   return selections
 }
 
-function resolveModelPriceStrict(input: {
-  apiType: PricingApiType
-  model: string
-  selections?: Record<string, CapabilityValue>
-  customPricingFallback?: number | null
-}): number {
-  const result = resolveBuiltinPricing({
-    apiType: input.apiType,
-    model: input.model,
-    selections: input.selections,
-  })
+function describePricingResolution(resolution: PricingResolution): string {
+  switch (resolution.status) {
+    case 'not_configured':
+      return 'model pricing is not configured'
+    case 'ambiguous_model':
+      return 'model pricing is ambiguous; use provider::modelId'
+    case 'missing_capability_match':
+      return 'model pricing does not match selected capabilities'
+    case 'resolved':
+      return 'model pricing resolved'
+  }
+}
 
-  if (result.status === 'resolved') return result.amount
-
-  if (result.status === 'ambiguous_model') {
+function throwPricingResolutionError(
+  apiType: ApiType,
+  model: string,
+  resolution: Exclude<PricingResolution, { status: 'resolved' }>,
+): never {
+  if (resolution.status === 'ambiguous_model') {
     throw new BillingOperationError(
       'BILLING_PRICING_MODEL_AMBIGUOUS',
-      `Ambiguous ${input.apiType} pricing modelId: ${result.modelId}`,
+      `BILLING_PRICING_MODEL_AMBIGUOUS: ${apiType} ${model}`,
       {
-        apiType: input.apiType,
-        model: input.model,
-        modelId: result.modelId,
-        candidates: result.candidates.map((candidate) => `${candidate.provider}::${candidate.modelId}`),
+        apiType,
+        model,
+        candidates: resolution.candidates.map((candidate) => `${candidate.provider}::${candidate.modelId}`),
       },
     )
   }
 
-  if (result.status === 'missing_capability_match') {
+  if (resolution.status === 'missing_capability_match') {
     throw new BillingOperationError(
       'BILLING_CAPABILITY_PRICE_NOT_FOUND',
-      `No capability pricing tier matched for ${input.model}`,
+      `BILLING_CAPABILITY_PRICE_NOT_FOUND: ${apiType} ${model}`,
       {
-        apiType: input.apiType,
-        model: input.model,
-        selections: input.selections || {},
+        apiType,
+        model,
+        selections: resolution.selections,
+        provider: resolution.entry.provider,
+        modelId: resolution.entry.modelId,
       },
     )
   }
 
-  // Fallback to user custom pricing
-  if (typeof input.customPricingFallback === 'number') {
-    return input.customPricingFallback
-  }
-
-  const modelId = parseModelId(input.model)
   throw new BillingOperationError(
     'BILLING_UNKNOWN_MODEL',
-    `Unknown ${input.apiType} model pricing: ${input.model}`,
+    `BILLING_UNKNOWN_MODEL: ${apiType} ${model}`,
     {
-      apiType: input.apiType,
-      model: input.model,
-      modelId,
-    },
-  )
-}
-
-function resolveTextUnitPrice(model: string, tokenType: 'input' | 'output', customPricingFallback?: number | null): number {
-  return resolveModelPriceStrict({
-    apiType: 'text',
-    model,
-    selections: { tokenType },
-    customPricingFallback,
-  })
-}
-
-function resolveVideoCapabilities(model: string): ModelCapabilities | undefined {
-  const parsed = parseModelKeyStrict(model)
-  if (parsed) {
-    return findBuiltinCapabilities('video', parsed.provider, parsed.modelId)
-  }
-
-  const candidates = listBuiltinCapabilityCatalog().filter(
-    (entry) => entry.modelType === 'video' && entry.modelId === model,
-  )
-  if (candidates.length !== 1) return undefined
-  return candidates[0].capabilities
-}
-
-function videoCapabilitySupportsField(
-  model: string,
-  field: 'resolution' | 'generationMode' | 'generateAudio' | 'duration',
-): boolean {
-  const capabilities = resolveVideoCapabilities(model)
-  const namespace = capabilities?.video
-  if (!namespace) return false
-
-  const options = (() => {
-    if (field === 'resolution') return namespace.resolutionOptions
-    if (field === 'generationMode') return namespace.generationModeOptions
-    if (field === 'generateAudio') return namespace.generateAudioOptions
-    return namespace.durationOptions
-  })()
-  return Array.isArray(options) && options.length > 0
-}
-
-function resolveVideoDurationRangeFromCapabilities(
-  model: string,
-): { min: number; max: number } | null {
-  const capabilities = resolveVideoCapabilities(model)
-
-  const options = capabilities?.video?.durationOptions
-  if (!Array.isArray(options) || options.length === 0) return null
-
-  const durations = options.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-  if (durations.length === 0) return null
-  return {
-    min: Math.min(...durations),
-    max: Math.max(...durations),
-  }
-}
-
-function resolveVideoDefaultGenerateAudioFromCapabilities(model: string): boolean | undefined {
-  const capabilities = resolveVideoCapabilities(model)
-  const options = capabilities?.video?.generateAudioOptions
-  if (!Array.isArray(options) || options.length === 0) return undefined
-  const normalized = options.filter((value): value is boolean => typeof value === 'boolean')
-  if (normalized.length === 0) return undefined
-  return normalized[0]
-}
-
-function validateVideoSelectionsAgainstCapabilitiesOrThrow(
-  model: string,
-  selections: Record<string, CapabilityValue>,
-) {
-  const capabilities = resolveVideoCapabilities(model)
-  if (!capabilities) return
-
-  const parsed = parseModelKeyStrict(model)
-  const modelKey = parsed ? `${parsed.provider}::${parsed.modelId}` : model
-  const issues = validateCapabilitySelectionForModel({
-    modelKey,
-    modelType: 'video',
-    capabilities,
-    selection: selections,
-    requireAllFields: false,
-  })
-  if (issues.length === 0) return
-
-  const selectedResolution = typeof selections.resolution === 'string' ? selections.resolution : undefined
-  const hasResolutionIssue = issues.some(
-    (issue) => issue.field.endsWith('.resolution') && issue.code === 'CAPABILITY_VALUE_NOT_ALLOWED',
-  )
-  if (hasResolutionIssue && selectedResolution) {
-    throw new BillingOperationError(
-      'BILLING_UNKNOWN_VIDEO_RESOLUTION',
-      `Unsupported video resolution pricing: ${selectedResolution}`,
-      {
-        apiType: 'video',
-        model,
-        resolution: selectedResolution,
-      },
-    )
-  }
-
-  const firstIssue = issues[0]
-  throw new BillingOperationError(
-    'BILLING_UNKNOWN_VIDEO_CAPABILITY_COMBINATION',
-    `Unsupported video capability pricing: ${firstIssue.field} ${firstIssue.message}`,
-    {
-      apiType: 'video',
+      apiType,
       model,
-      selections,
-      issue: {
-        code: firstIssue.code,
-        field: firstIssue.field,
-        message: firstIssue.message,
-      },
+      reason: describePricingResolution(resolution),
     },
   )
 }
 
-function applyVideoDurationScaling(input: {
-  amount: number
+/**
+ * Resolve the retail price of a model.
+ *
+ * Billing only ever reads the retail face — the cost face exists for margin
+ * reporting and never reaches a user-facing amount.
+ */
+function resolveCatalogPricing(input: {
+  apiType: ApiType
   model: string
-  selections: Record<string, CapabilityValue>
-  hasDurationTier: boolean
-}): number {
-  if (input.hasDurationTier) return input.amount
-  const selectedDuration = input.selections.duration
-  if (typeof selectedDuration !== 'number' || !Number.isFinite(selectedDuration) || selectedDuration <= 0) {
-    return input.amount
-  }
-
-  const durationRange = resolveVideoDurationRangeFromCapabilities(input.model)
-  if (!durationRange) return input.amount
-
-  const baseDuration = durationRange.min <= 5 && durationRange.max >= 5
-    ? 5
-    : durationRange.min
-  if (baseDuration <= 0) return input.amount
-
-  return input.amount * (selectedDuration / baseDuration)
-}
-
-type Seedance2Resolution = '480p' | '720p'
-type Seedance2AspectRatio = '16:9' | '4:3' | '1:1' | '3:4' | '9:16' | '21:9'
-
-const SEEDANCE_2_TOKEN_PRICED_MODEL_IDS = new Set([
-  'doubao-seedance-2-0-260128',
-  'doubao-seedance-2-0-fast-260128',
-])
-
-const SEEDANCE_2_OUTPUT_DIMENSIONS: Record<
-  Seedance2Resolution,
-  Record<Seedance2AspectRatio, { width: number; height: number }>
-> = {
-  '480p': {
-    '16:9': { width: 864, height: 496 },
-    '4:3': { width: 752, height: 560 },
-    '1:1': { width: 640, height: 640 },
-    '3:4': { width: 560, height: 752 },
-    '9:16': { width: 496, height: 864 },
-    '21:9': { width: 992, height: 432 },
-  },
-  '720p': {
-    '16:9': { width: 1280, height: 720 },
-    '4:3': { width: 1112, height: 834 },
-    '1:1': { width: 960, height: 960 },
-    '3:4': { width: 834, height: 1112 },
-    '9:16': { width: 720, height: 1280 },
-    '21:9': { width: 1470, height: 630 },
-  },
-}
-
-const SEEDANCE_2_VIDEO_INPUT_MIN_TOKEN_FLOOR: Record<number, Record<Seedance2Resolution, number>> = {
-  4: { '480p': 70308, '720p': 151200 },
-  5: { '480p': 90396, '720p': 194400 },
-  6: { '480p': 100440, '720p': 216000 },
-  7: { '480p': 120528, '720p': 259200 },
-  8: { '480p': 140616, '720p': 302400 },
-  9: { '480p': 150660, '720p': 324000 },
-  10: { '480p': 170748, '720p': 367200 },
-  11: { '480p': 190836, '720p': 410400 },
-  12: { '480p': 200880, '720p': 432000 },
-  13: { '480p': 220968, '720p': 475200 },
-  14: { '480p': 241056, '720p': 518400 },
-  15: { '480p': 251100, '720p': 540000 },
-}
-
-const SEEDANCE_2_DEFAULT_OUTPUT_DURATION_SECONDS = 5
-const SEEDANCE_2_MIN_INPUT_VIDEO_SECONDS = 2
-const SEEDANCE_2_DEFAULT_ASPECT_RATIO: Seedance2AspectRatio = '16:9'
-const SEEDANCE_2_FPS = 24
-
-function isSeedance2TokenPricedModel(model: string): boolean {
-  return SEEDANCE_2_TOKEN_PRICED_MODEL_IDS.has(parseModelId(model))
-}
-
-function readMetadataNumber(metadata: Record<string, unknown> | undefined, field: string): number | null {
-  if (!metadata) return null
-  const value = metadata[field]
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function resolveSeedance2Resolution(value: CapabilityValue | undefined): Seedance2Resolution {
-  if (value === '480p' || value === '720p') return value
-  throw new BillingOperationError(
-    'BILLING_UNKNOWN_VIDEO_RESOLUTION',
-    `Unsupported video resolution pricing: ${String(value)}`,
-    {
-      apiType: 'video',
-      resolution: value,
-    },
-  )
-}
-
-function resolveSeedance2AspectRatio(value: CapabilityValue | undefined): Seedance2AspectRatio {
-  if (
-    value === '16:9'
-    || value === '4:3'
-    || value === '1:1'
-    || value === '3:4'
-    || value === '9:16'
-    || value === '21:9'
-  ) {
-    return value
-  }
-  if (value === undefined) return SEEDANCE_2_DEFAULT_ASPECT_RATIO
-  throw new BillingOperationError(
-    'BILLING_UNKNOWN_VIDEO_CAPABILITY_COMBINATION',
-    `Unsupported video capability pricing: aspectRatio=${String(value)}`,
-    {
-      apiType: 'video',
-      aspectRatio: value,
-    },
-  )
-}
-
-function resolveSeedance2TokenUnitPrice(
-  model: string,
-  containsVideoInput: boolean,
-): number {
-  return resolveModelPriceStrict({
-    apiType: 'video',
-    model,
-    selections: { containsVideoInput },
+  selections?: Record<string, CapabilityValue>
+}): Extract<PricingResolution, { status: 'resolved' }> {
+  ensureAiCatalogsRegistered()
+  const resolution = resolveBuiltinPricing({
+    apiType: input.apiType,
+    model: input.model,
+    face: 'retail',
+    selections: input.selections,
   })
-}
-
-function estimateSeedance2VideoTokens(
-  selections: Record<string, CapabilityValue>,
-  metadata?: Record<string, unknown>,
-): number {
-  const resolution = resolveSeedance2Resolution(selections.resolution)
-  const aspectRatio = resolveSeedance2AspectRatio(selections.aspectRatio)
-  const outputDurationSeconds = typeof selections.duration === 'number'
-    ? selections.duration
-    : SEEDANCE_2_DEFAULT_OUTPUT_DURATION_SECONDS
-  const containsVideoInput = selections.containsVideoInput === true
-  const inputVideoSeconds = containsVideoInput
-    ? (readMetadataNumber(metadata, 'inputVideoSeconds') ?? SEEDANCE_2_MIN_INPUT_VIDEO_SECONDS)
-    : 0
-  const outputSize = SEEDANCE_2_OUTPUT_DIMENSIONS[resolution][aspectRatio]
-  const estimatedTokens = Math.ceil(
-    ((inputVideoSeconds + outputDurationSeconds) * outputSize.width * outputSize.height * SEEDANCE_2_FPS) / 1024,
-  )
-
-  if (!containsVideoInput || aspectRatio !== '16:9') {
-    return estimatedTokens
-  }
-
-  const durationFloor = SEEDANCE_2_VIDEO_INPUT_MIN_TOKEN_FLOOR[outputDurationSeconds]?.[resolution]
-  return typeof durationFloor === 'number'
-    ? Math.max(estimatedTokens, durationFloor)
-    : estimatedTokens
-}
-
-function calcSeedance2VideoCostFromTokens(
-  model: string,
-  totalTokens: number,
-  metadata?: Record<string, unknown>,
-): number {
-  const containsVideoInput = metadata?.containsVideoInput === true
-  const unitPrice = resolveSeedance2TokenUnitPrice(model, containsVideoInput)
-  const normalizedTokens = Math.max(0, Number(totalTokens) || 0)
-  return (normalizedTokens / 1_000_000) * unitPrice * getMarkup('video')
+  if (resolution.status === 'resolved') return resolution
+  return throwPricingResolutionError(input.apiType, input.model, resolution)
 }
 
 export function calcText(
   model: string,
   inputTokens: number,
   outputTokens: number,
-  customPricing?: ModelCustomPricing | null,
 ): number {
-  const normalizedInput = Math.max(0, Number(inputTokens) || 0)
-  const normalizedOutput = Math.max(0, Number(outputTokens) || 0)
-
-  const inputFallback = typeof customPricing?.llm?.inputPerMillion === 'number' ? customPricing.llm.inputPerMillion : null
-  const outputFallback = typeof customPricing?.llm?.outputPerMillion === 'number' ? customPricing.llm.outputPerMillion : null
-  const inputUnitPrice = resolveTextUnitPrice(model, 'input', inputFallback)
-  const outputUnitPrice = resolveTextUnitPrice(model, 'output', outputFallback)
-  const rawCost = ((normalizedInput / 1_000_000) * inputUnitPrice) + ((normalizedOutput / 1_000_000) * outputUnitPrice)
-  return rawCost * getMarkup('text')
+  return calcTextWithCache(model, inputTokens, outputTokens)
 }
 
-function resolveCustomMediaPrice(input: {
-  apiType: 'image' | 'video'
-  model: string
-  selections: Record<string, CapabilityValue>
-  pricing?: MediaCustomPricing
-}): { status: 'none' } | { status: 'resolved'; amount: number } | { status: 'invalid'; field: string } {
-  if (!input.pricing) return { status: 'none' }
+export function calcTextWithCache(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  metadata?: TextCacheCostMetadata,
+): number {
+  const normalizedInputTokens = normalizePositiveInteger(inputTokens)
+  const normalizedOutputTokens = normalizePositiveInteger(outputTokens)
+  if (normalizedInputTokens === 0 && normalizedOutputTokens === 0) return 0
 
-  let hasAnyPricing = false
-  let amount = 0
-  if (typeof input.pricing.basePrice === 'number') {
-    hasAnyPricing = true
-    amount += input.pricing.basePrice
-  }
-
-  const optionPrices = input.pricing.optionPrices
-  if (optionPrices) {
-    for (const [field, rawOptionMap] of Object.entries(optionPrices)) {
-      const optionMap = rawOptionMap || {}
-      if (Object.keys(optionMap).length === 0) continue
-      hasAnyPricing = true
-
-      const selectionValue = input.selections[field]
-      if (selectionValue === undefined) continue
-      const selectionKey = String(selectionValue)
-      const delta = optionMap[selectionKey]
-      if (typeof delta !== 'number' || !Number.isFinite(delta) || delta < 0) {
-        return { status: 'invalid', field }
-      }
-      amount += delta
+  let cost = 0
+  if (normalizedInputTokens > 0) {
+    const inputPricing = resolveCatalogPricing({
+      apiType: 'text',
+      model,
+      selections: { tokenType: 'input' },
+    })
+    const cachedInputTokens = Math.min(
+      normalizePositiveInteger(metadata?.cachedInputTokens ?? 0),
+      normalizedInputTokens,
+    )
+    const useGoogleContextCachePricing = inputPricing.entry.provider === 'google' && cachedInputTokens > 0
+    const fullPriceInputTokens = useGoogleContextCachePricing
+      ? normalizedInputTokens - cachedInputTokens
+      : normalizedInputTokens
+    cost += (fullPriceInputTokens / 1_000_000) * inputPricing.amount
+    if (useGoogleContextCachePricing) {
+      cost += (
+        cachedInputTokens
+        / 1_000_000
+        * inputPricing.amount
+        * GOOGLE_CONTEXT_CACHE_INPUT_PRICE_MULTIPLIER
+      )
     }
   }
 
-  if (!hasAnyPricing) return { status: 'none' }
-  return { status: 'resolved', amount }
+  if (normalizedOutputTokens > 0) {
+    const outputPricing = resolveCatalogPricing({
+      apiType: 'text',
+      model,
+      selections: { tokenType: 'output' },
+    })
+    cost += (normalizedOutputTokens / 1_000_000) * outputPricing.amount
+  }
+
+  return roundCredits(cost)
+}
+
+/**
+ * Price a model's server-side tool calls, which some providers bill per call on
+ * top of tokens. Only models that declare a `toolCall` tier have one, so a
+ * model without that tier costs nothing here — but an entirely unpriced model
+ * still throws, exactly as it does for tokens. Silently pricing an unknown
+ * model at zero is how unbilled usage happens.
+ */
+export function calcTextToolCalls(model: string, toolCalls: number): number {
+  const normalizedToolCalls = normalizePositiveInteger(toolCalls)
+  if (normalizedToolCalls === 0) return 0
+  ensureAiCatalogsRegistered()
+  const resolution = resolveBuiltinPricing({
+    apiType: 'text',
+    model,
+    face: 'retail',
+    selections: { tokenType: 'toolCall' },
+  })
+  if (resolution.status === 'missing_capability_match') return 0
+  if (resolution.status !== 'resolved') {
+    return throwPricingResolutionError('text', model, resolution)
+  }
+  return roundCredits((normalizedToolCalls / 1_000_000) * resolution.amount)
 }
 
 export function calcImage(
   model: string,
-  count = 1,
-  metadata?: Record<string, unknown>,
-  customPricing?: ModelCustomPricing | null,
+  quantity = 1,
+  metadata?: BillingMetadata,
 ): number {
-  const selections = normalizeCapabilitySelections(metadata)
-  const resolved = resolveBuiltinPricing({
+  const units = Math.max(1, normalizePositiveInteger(quantity))
+  const selections = toCapabilitySelections(metadata)
+  const imageSize = resolveImageSizeFromGenerationOptions(metadata)
+  if (imageSize) selections.imageSize = imageSize
+  if (!selections.quality) selections.quality = 'high'
+
+  const pricing = resolveCatalogPricing({
     apiType: 'image',
     model,
     selections,
   })
-  let unitPrice: number | null = null
-  if (resolved.status === 'resolved') {
-    unitPrice = resolved.amount
-  } else if (resolved.status === 'ambiguous_model') {
-    throw new BillingOperationError(
-      'BILLING_PRICING_MODEL_AMBIGUOUS',
-      `Ambiguous image pricing modelId: ${resolved.modelId}`,
-      {
-        apiType: 'image',
-        model,
-        modelId: resolved.modelId,
-        candidates: resolved.candidates.map((candidate) => `${candidate.provider}::${candidate.modelId}`),
-      },
-    )
-  }
-
-  if (unitPrice === null) {
-    const customResolved = resolveCustomMediaPrice({
-      apiType: 'image',
-      model,
-      selections,
-      pricing: customPricing?.image,
-    })
-    if (customResolved.status === 'resolved') {
-      unitPrice = customResolved.amount
-    } else if (customResolved.status === 'invalid') {
-      throw new BillingOperationError(
-        'BILLING_CAPABILITY_PRICE_NOT_FOUND',
-        `No custom image price matched for field ${customResolved.field}`,
-        { apiType: 'image', model, field: customResolved.field, selections },
-      )
-    }
-  }
-
-  if (unitPrice === null) {
-    if (resolved.status === 'missing_capability_match') {
-      throw new BillingOperationError(
-        'BILLING_CAPABILITY_PRICE_NOT_FOUND',
-        `No capability pricing tier matched for ${model}`,
-        {
-          apiType: 'image',
-          model,
-          selections,
-        },
-      )
-    }
-    const modelId = parseModelId(model)
-    throw new BillingOperationError(
-      'BILLING_UNKNOWN_MODEL',
-      `Unknown image model pricing: ${model}`,
-      {
-        apiType: 'image',
-        model,
-        modelId,
-      },
-    )
-  }
-
-  const quantity = Math.max(0, Number(count) || 0)
-  return unitPrice * quantity * getMarkup('image')
+  return roundCredits(units * pricing.amount)
 }
 
 export function calcVideo(
   model: string,
   resolution = '720p',
-  count = 1,
-  metadata?: Record<string, unknown>,
-  customPricing?: ModelCustomPricing | null,
+  quantity = 1,
+  metadata?: BillingMetadata,
 ): number {
-  const selections = normalizeCapabilitySelections(metadata)
-  if (typeof selections.containsVideoInput !== 'boolean' && isSeedance2TokenPricedModel(model)) {
-    selections.containsVideoInput = false
-  }
-  const capabilitySelections = { ...selections }
-  delete capabilitySelections.aspectRatio
-  delete capabilitySelections.containsVideoInput
-  delete capabilitySelections.inputVideoSeconds
-  if (
-    typeof selections.resolution !== 'string'
-    && videoCapabilitySupportsField(model, 'resolution')
-  ) {
-    selections.resolution = resolution
-  }
-  if (
-    typeof selections.generationMode !== 'string'
-    && videoCapabilitySupportsField(model, 'generationMode')
-  ) {
-    selections.generationMode = 'normal'
-  }
-  if (typeof selections.generateAudio !== 'boolean') {
-    const defaultGenerateAudio = resolveVideoDefaultGenerateAudioFromCapabilities(model)
-    if (typeof defaultGenerateAudio === 'boolean') {
-      selections.generateAudio = defaultGenerateAudio
-    }
-  }
-  if (
-    typeof capabilitySelections.resolution !== 'string'
-    && videoCapabilitySupportsField(model, 'resolution')
-  ) {
-    capabilitySelections.resolution = selections.resolution
-  }
-  if (
-    typeof capabilitySelections.generationMode !== 'string'
-    && videoCapabilitySupportsField(model, 'generationMode')
-  ) {
-    capabilitySelections.generationMode = selections.generationMode
-  }
-  if (typeof capabilitySelections.generateAudio !== 'boolean' && typeof selections.generateAudio === 'boolean') {
-    capabilitySelections.generateAudio = selections.generateAudio
-  }
-  validateVideoSelectionsAgainstCapabilitiesOrThrow(model, capabilitySelections)
-
-  if (isSeedance2TokenPricedModel(model)) {
-    const estimatedTokens = estimateSeedance2VideoTokens(selections, metadata)
-    const unitCost = calcSeedance2VideoCostFromTokens(model, estimatedTokens, metadata)
-    const quantity = Math.max(0, Number(count) || 0)
-    return unitCost * quantity
+  const units = Math.max(1, normalizePositiveInteger(quantity))
+  const duration = resolveDurationSeconds(metadata)
+  const selections = {
+    ...toCapabilitySelections(metadata),
+    resolution,
+    ...(duration !== null ? { duration } : {}),
   }
 
-  const resolutionResult = resolveBuiltinPricing({
+  const pricing = resolveCatalogPricing({
     apiType: 'video',
     model,
-    selections: capabilitySelections,
+    selections,
   })
-  if (resolutionResult.status === 'ambiguous_model') {
+  if (pricing.mode === 'capability' && !pricing.unit) {
     throw new BillingOperationError(
-      'BILLING_PRICING_MODEL_AMBIGUOUS',
-      `Ambiguous video pricing modelId: ${resolutionResult.modelId}`,
-      {
-        apiType: 'video',
-        model,
-        modelId: resolutionResult.modelId,
-        candidates: resolutionResult.candidates.map((candidate) => `${candidate.provider}::${candidate.modelId}`),
-      },
-    )
-  }
-  let unitPrice: number | null = null
-  if (resolutionResult.status === 'resolved') {
-    const resolvedEntry = resolutionResult.entry
-    const pricing = resolvedEntry && typeof resolvedEntry === 'object'
-      ? (resolvedEntry as { pricing?: { mode?: string; tiers?: Array<{ when?: { duration?: unknown } }> } }).pricing
-      : undefined
-    const hasDurationTier = pricing?.mode === 'capability'
-      && (pricing.tiers || []).some((tier) => typeof tier.when?.duration === 'number')
-    unitPrice = applyVideoDurationScaling({
-      amount: resolutionResult.amount,
-      model,
-      selections,
-      hasDurationTier,
-    })
-  }
-
-  if (unitPrice === null) {
-    const customResolved = resolveCustomMediaPrice({
-      apiType: 'video',
-      model,
-      selections,
-      pricing: customPricing?.video,
-    })
-    if (customResolved.status === 'resolved') {
-      unitPrice = customResolved.amount
-    } else if (customResolved.status === 'invalid') {
-      throw new BillingOperationError(
-        'BILLING_CAPABILITY_PRICE_NOT_FOUND',
-        `No custom video price matched for field ${customResolved.field}`,
-        { apiType: 'video', model, field: customResolved.field, selections },
-      )
-    }
-  }
-
-  if (unitPrice === null) {
-    if (resolutionResult.status === 'missing_capability_match') {
-      const pickedDuration = typeof selections.duration === 'number'
-        ? selections.duration
-        : null
-      const pickedResolution = selections.resolution as string
-      if (pickedDuration !== null) {
-        throw new BillingOperationError(
-          'BILLING_UNKNOWN_VIDEO_CAPABILITY_COMBINATION',
-          `Unsupported video capability pricing: resolution=${pickedResolution}, duration=${pickedDuration}`,
-          {
-            apiType: 'video',
-            model,
-            resolution: pickedResolution,
-            duration: pickedDuration,
-          },
-        )
-      }
-      throw new BillingOperationError(
-        'BILLING_UNKNOWN_VIDEO_RESOLUTION',
-        `Unsupported video resolution pricing: ${pickedResolution}`,
-        {
-          apiType: 'video',
-          model,
-          resolution: pickedResolution,
-        },
-      )
-    }
-    const modelId = parseModelId(model)
-    throw new BillingOperationError(
-      'BILLING_UNKNOWN_MODEL',
-      `Unknown video model pricing: ${model}`,
-      {
-        apiType: 'video',
-        model,
-        modelId,
-      },
+      'BILLING_CAPABILITY_PRICE_NOT_FOUND',
+      `BILLING_CAPABILITY_PRICE_NOT_FOUND: video ${model} missing pricing unit`,
+      { apiType: 'video', model, selections },
     )
   }
 
-  const quantity = Math.max(0, Number(count) || 0)
-  return unitPrice * quantity * getMarkup('video')
+  const pricingUnit = pricing.mode === 'flat' ? 'per_call' : pricing.unit
+  if (pricingUnit === 'per_second' && duration === null) {
+    throw new BillingOperationError(
+      'BILLING_CAPABILITY_PRICE_NOT_FOUND',
+      `BILLING_CAPABILITY_PRICE_NOT_FOUND: video ${model} requires duration`,
+      { apiType: 'video', model, selections },
+    )
+  }
+
+  const unitCost = pricing.mode === 'flat' || pricingUnit === 'per_call'
+    ? pricing.amount
+    : pricing.amount * normalizePositiveNumber(duration || 0)
+  return roundCredits(units * unitCost)
 }
 
-export function calcVideoByTokens(
+export function calcMusic(
   model: string,
-  totalTokens: number,
-  metadata?: Record<string, unknown>,
+  quantity = 1,
+  metadata?: BillingMetadata,
 ): number {
-  if (!isSeedance2TokenPricedModel(model)) {
+  const units = Math.max(1, normalizePositiveInteger(quantity))
+  const duration = resolveDurationSeconds(metadata)
+  const pricing = resolveCatalogPricing({
+    apiType: 'music',
+    model,
+    selections: toCapabilitySelections(metadata),
+  })
+  const pricingUnit = pricing.mode === 'flat' ? pricing.unit ?? 'per_call' : pricing.unit
+  if (pricingUnit === 'per_second' && duration === null) {
     throw new BillingOperationError(
-      'BILLING_UNKNOWN_VIDEO_CAPABILITY_COMBINATION',
-      `Video token settlement is not supported for ${model}`,
-      {
-        apiType: 'video',
-        model,
-      },
+      'BILLING_CAPABILITY_PRICE_NOT_FOUND',
+      `BILLING_CAPABILITY_PRICE_NOT_FOUND: music ${model} requires duration`,
+      { apiType: 'music', model },
     )
   }
-  return calcSeedance2VideoCostFromTokens(model, totalTokens, metadata)
+  const unitCost = pricingUnit === 'per_second'
+    ? pricing.amount * normalizePositiveNumber(duration || 0)
+    : pricing.amount
+  return roundCredits(units * unitCost)
 }
 
-export function calcVoice(durationSeconds: number): number {
-  const seconds = Math.max(0, Number(durationSeconds) || 0)
-  const unitPrice = resolveModelPriceStrict({
+export function calcVoice(model: string, characters: number): number {
+  const units = Math.max(1, normalizePositiveInteger(characters))
+  const pricing = resolveCatalogPricing({
     apiType: 'voice',
-    model: DEFAULT_VOICE_MODEL_ID,
-  })
-  return unitPrice * seconds * getMarkup('voice')
-}
-
-export function calcVoiceDesign(): number {
-  const unitPrice = resolveModelPriceStrict({
-    apiType: 'voice-design',
-    model: DEFAULT_VOICE_DESIGN_MODEL_ID,
-  })
-  return unitPrice * getMarkup('voiceDesign')
-}
-
-export function calcLipSync(model = DEFAULT_LIP_SYNC_MODEL_ID): number {
-  const unitPrice = resolveModelPriceStrict({
-    apiType: 'lip-sync',
     model,
   })
-  return unitPrice * getMarkup('lipSync')
+  return roundCredits(units * pricing.amount)
 }

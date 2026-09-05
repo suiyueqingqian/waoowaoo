@@ -1,9 +1,11 @@
 import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import type { ApiType, UsageUnit } from './cost'
 import { BillingOperationError } from './errors'
 import { toMoneyNumber } from './money'
+import { GLOBAL_ASSET_PROJECT_ID } from '@/lib/workspace-resource/resource-impact'
+import { resolvePublicModelName } from '@/lib/ai-exec/model-presentation'
 
 interface RecordParams {
   projectId: string
@@ -18,15 +20,15 @@ interface PureRecordParams extends RecordParams {
   quantity: number
   unit: UsageUnit
   cost: number
+  chargedCredits?: number
   balanceAfter: number
   freezeId?: string
-  episodeId?: string | null
   taskType?: string | null
 }
 
-const VIRTUAL_PROJECT_IDS = new Set(['asset-hub', 'global-asset-hub', 'system'])
+const VIRTUAL_PROJECT_IDS = new Set(['asset-hub', GLOBAL_ASSET_PROJECT_ID, 'system'])
 
-function isProjectScoped(projectId: string): boolean {
+export function isProjectScoped(projectId: string): boolean {
   return Boolean(projectId && !VIRTUAL_PROJECT_IDS.has(projectId))
 }
 
@@ -39,80 +41,213 @@ function isProjectScoped(projectId: string): boolean {
  *   second → "30秒"
  *   call   → "1次"
  */
-export function buildBillingMeta(params: {
+export function buildBillingMetaRecord(params: {
   quantity: number
   unit: string
   model: string
   apiType: string
   metadata?: Record<string, unknown>
-}): string {
-  // 尝试从 model composite ID 提取短名 "provider:xxx::model" → "model"
-  const modelShort = params.model.includes('::')
-    ? params.model.split('::').pop() ?? params.model
-    : params.model
-
+}): Record<string, unknown> {
   const meta: Record<string, unknown> = {
     quantity: params.quantity,
     unit: params.unit,
-    model: modelShort,
+    model: resolvePublicModelName(params.model),
     apiType: params.apiType,
   }
 
   // 从 pricingSelections 提取 capability 字段（图片分辨率、视频时长/分辨率等）
   const selections = params.metadata?.pricingSelections
-  if (selections && typeof selections === 'object') {
-    const sel = selections as Record<string, unknown>
-    if (sel.resolution) meta.resolution = sel.resolution
-    if (sel.duration) meta.duration = sel.duration
-    if (sel.generateAudio !== undefined) meta.generateAudio = sel.generateAudio
-    if (sel.generationMode) meta.generationMode = sel.generationMode
+  const selectionRecord =
+    selections && typeof selections === 'object' && !Array.isArray(selections)
+      ? (selections as Record<string, unknown>)
+      : {}
+  const detailSource = {
+    ...selectionRecord,
+    ...(params.metadata || {}),
   }
+  if (detailSource.resolution) meta.resolution = detailSource.resolution
+  if (detailSource.duration) meta.duration = detailSource.duration
+  if (detailSource.actualDurationSeconds) meta.duration = detailSource.actualDurationSeconds
+  if (detailSource.generateAudio !== undefined) meta.generateAudio = detailSource.generateAudio
+  if (detailSource.generationMode) meta.generationMode = detailSource.generationMode
+  if (detailSource.quality) meta.quality = detailSource.quality
+  if (detailSource.size) meta.size = detailSource.size
+  if (detailSource.aspectRatio) meta.aspectRatio = detailSource.aspectRatio
 
-  // 文本计费的 token 信息
-  if (params.metadata?.inputTokens) meta.inputTokens = params.metadata.inputTokens
-  if (params.metadata?.outputTokens) meta.outputTokens = params.metadata.outputTokens
+  const inputTokens = params.metadata?.actualInputTokens ?? params.metadata?.inputTokens
+  const outputTokens = params.metadata?.actualOutputTokens ?? params.metadata?.outputTokens
+  const cachedInputTokens =
+    params.metadata?.actualCachedInputTokens ?? params.metadata?.cachedInputTokens
+  if (inputTokens) meta.inputTokens = inputTokens
+  if (outputTokens) meta.outputTokens = outputTokens
+  if (cachedInputTokens) meta.cachedInputTokens = cachedInputTokens
+
+  const chargedCost = params.metadata?.chargedCost
+  if (typeof chargedCost === 'number' && Number.isFinite(chargedCost)) {
+    meta.chargedCost = chargedCost
+  }
 
   // 实际使用的模型列表（复合模型场景）
-  if (Array.isArray(params.metadata?.actualModels) && (params.metadata.actualModels as unknown[]).length > 0) {
-    meta.actualModels = params.metadata.actualModels
+  if (
+    Array.isArray(params.metadata?.actualModels) &&
+    (params.metadata.actualModels as unknown[]).length > 0
+  ) {
+    const actualModels = (params.metadata.actualModels as unknown[])
+      .map((value) => typeof value === 'string' ? resolvePublicModelName(value) : null)
+      .filter((value): value is string => Boolean(value))
+    if (actualModels.length > 0) meta.actualModels = actualModels
   }
 
-  return JSON.stringify(meta)
+  return meta
+}
+
+const PUBLIC_BILLING_META_KEYS = [
+  'quantity',
+  'unit',
+  'apiType',
+  'resolution',
+  'duration',
+  'generateAudio',
+  'generationMode',
+  'quality',
+  'size',
+  'aspectRatio',
+  'inputTokens',
+  'outputTokens',
+  'cachedInputTokens',
+  'chargedCost',
+  'freezeAmount',
+  'refundedAmount',
+  'receiptUrl',
+] as const
+
+/** Final public billing projection; internal model and pricing identities stay private. */
+export function projectPublicBillingMeta(
+  meta: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!meta) return null
+
+  const projected: Record<string, unknown> = {}
+  for (const key of PUBLIC_BILLING_META_KEYS) {
+    const value = meta[key]
+    if (value !== undefined && value !== null) projected[key] = value
+  }
+
+  return Object.keys(projected).length > 0 ? projected : null
+}
+
+export function buildBillingMeta(params: Parameters<typeof buildBillingMetaRecord>[0]): string {
+  return JSON.stringify(buildBillingMetaRecord(params))
+}
+
+/**
+ * 用量事实 writer（唯一的 UsageCost 写入点）。
+ * 这里只写用量事实，不直接创建 BalanceTransaction；需要资金事件的调用方
+ * 必须在同一事务内先经账本唯一入口扣减，再把实际扣减额一并写入事实。
+ */
+export async function recordUsageFact(
+  txOrPrisma: Prisma.TransactionClient | typeof prisma,
+  params: Pick<
+    PureRecordParams,
+    | 'projectId'
+    | 'userId'
+    | 'action'
+    | 'apiType'
+    | 'model'
+    | 'quantity'
+    | 'unit'
+    | 'cost'
+    | 'chargedCredits'
+    | 'metadata'
+  > & {
+    usageId?: string
+  },
+): Promise<boolean> {
+  if (!isProjectScoped(params.projectId)) {
+    return false
+  }
+  const project = await txOrPrisma.project.findUnique({
+    where: { id: params.projectId },
+    select: { id: true },
+  })
+  if (!project) {
+    throw new BillingOperationError(
+      'BILLING_INVALID_PROJECT',
+      `project not found for billing: ${params.projectId}`,
+      {
+        projectId: params.projectId,
+        action: params.action,
+        apiType: params.apiType,
+      },
+    )
+  }
+
+  const usageId = params.usageId?.trim() || null
+  if (usageId && usageId.length > 191) {
+    throw new BillingOperationError('BILLING_INVALID_USAGE_IDENTITY', 'usage identity is invalid', {
+      usageId,
+    })
+  }
+  const metadata = params.metadata ? JSON.stringify(params.metadata) : null
+  const data = {
+    ...(usageId ? { id: usageId } : {}),
+    projectId: params.projectId,
+    userId: params.userId,
+    apiType: params.apiType,
+    model: params.model,
+    action: params.action,
+    quantity: params.quantity,
+    unit: params.unit,
+    cost: params.cost,
+    chargedCredits: params.chargedCredits ?? 0,
+    metadata,
+  }
+  try {
+    await txOrPrisma.usageCost.create({ data })
+  } catch (error) {
+    if (
+      !usageId ||
+      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+      error.code !== 'P2002'
+    ) {
+      throw error
+    }
+    const existing = await txOrPrisma.usageCost.findUnique({
+      where: { id: usageId },
+    })
+    if (
+      !existing ||
+      existing.projectId !== data.projectId ||
+      existing.userId !== data.userId ||
+      existing.apiType !== data.apiType ||
+      existing.model !== data.model ||
+      existing.action !== data.action ||
+      existing.quantity !== data.quantity ||
+      existing.unit !== data.unit ||
+      toMoneyNumber(existing.cost) !== toMoneyNumber(data.cost) ||
+      existing.chargedCredits !== data.chargedCredits ||
+      existing.metadata !== data.metadata
+    ) {
+      throw new BillingOperationError(
+        'BILLING_USAGE_REPLAY_DIVERGED',
+        'usage fact replay diverged from the persisted identity',
+        { usageId },
+        error,
+      )
+    }
+  }
+  return true
 }
 
 export async function recordUsageCostOnly(
   txOrPrisma: Prisma.TransactionClient | typeof prisma,
   params: PureRecordParams,
 ): Promise<void> {
-  const hasProject = isProjectScoped(params.projectId)
-
-  if (hasProject) {
-    const project = await txOrPrisma.project.findUnique({
-      where: { id: params.projectId },
-      select: { id: true },
-    })
-    if (!project) {
-      throw new BillingOperationError('BILLING_INVALID_PROJECT', `project not found for billing: ${params.projectId}`, {
-        projectId: params.projectId,
-        action: params.action,
-        apiType: params.apiType,
-      })
-    }
-
-    await txOrPrisma.usageCost.create({
-      data: {
-        projectId: params.projectId,
-        userId: params.userId,
-        apiType: params.apiType,
-        model: params.model,
-        action: params.action,
-        quantity: params.quantity,
-        unit: params.unit,
-        cost: params.cost,
-        metadata: params.metadata ? JSON.stringify(params.metadata) : null,
-      },
-    })
-  } else {
+  const hasProject = await recordUsageFact(txOrPrisma, {
+    ...params,
+    chargedCredits: params.cost,
+  })
+  if (!hasProject) {
     _ulogInfo(`[计费] 跳过 UsageCost 记录 (projectId=${params.projectId})，仅记录流水`)
   }
 
@@ -126,13 +261,14 @@ export async function recordUsageCostOnly(
       relatedId: params.freezeId || null,
       freezeId: params.freezeId || null,
       projectId: hasProject ? params.projectId : null,
-      episodeId: params.episodeId || null,
       taskType: params.taskType || params.action || null,
       billingMeta: buildBillingMeta(params),
     },
   })
 
-  _ulogInfo(`[计费] ${params.action} - ${params.model} - ¥${params.cost.toFixed(4)} (已记录${hasProject ? '' : '，无项目归属'})`)
+  _ulogInfo(
+    `[Billing] ${params.action} - ${params.model} - ${params.cost} credits (recorded${hasProject ? '' : ', no project scope'})`,
+  )
 }
 
 export async function getProjectTotalCost(projectId: string): Promise<number> {
@@ -143,8 +279,8 @@ export async function getProjectTotalCost(projectId: string): Promise<number> {
     })
     return toMoneyNumber(result._sum.cost)
   } catch (error) {
-    _ulogError('[计费] 查询项目总费用失败:', error)
-    return 0
+    _ulogError('[Billing] project total cost query failed', { projectId }, error)
+    throw error
   }
 }
 
@@ -184,8 +320,15 @@ export async function getProjectCostDetails(projectId: string) {
     },
   }))
   const recentRecords = recentRecordsRaw.map((item) => ({
-    ...item,
+    id: item.id,
+    projectId: item.projectId,
+    apiType: item.apiType,
+    action: item.action,
+    quantity: item.quantity,
+    unit: item.unit,
     cost: toMoneyNumber(item.cost),
+    chargedCredits: item.chargedCredits,
+    createdAt: item.createdAt,
   }))
 
   return {
@@ -221,30 +364,40 @@ export async function getUserCostSummary(userId: string) {
       })),
     }
   } catch (error) {
-    _ulogError('[计费] 查询用户费用汇总失败:', error)
-    return {
-      total: 0,
-      byProject: [],
-    }
+    _ulogError('[Billing] user cost summary query failed', { userId }, error)
+    throw error
   }
 }
 
-export async function getUserCostDetails(userId: string, page = 1, pageSize = 20) {
+export async function getUserCostDetails(
+  userId: string,
+  page = 1,
+  pageSize = 20,
+  projectId?: string,
+) {
   const skip = (page - 1) * pageSize
+  const where = { userId, ...(projectId ? { projectId } : {}) }
 
   const [recordsRaw, total] = await Promise.all([
     prisma.usageCost.findMany({
-      where: { userId },
+      where,
       orderBy: { createdAt: 'desc' },
       skip,
       take: pageSize,
     }),
-    prisma.usageCost.count({ where: { userId } }),
+    prisma.usageCost.count({ where }),
   ])
 
   const records = recordsRaw.map((item) => ({
-    ...item,
+    id: item.id,
+    projectId: item.projectId,
+    apiType: item.apiType,
+    action: item.action,
+    quantity: item.quantity,
+    unit: item.unit,
     cost: toMoneyNumber(item.cost),
+    chargedCredits: item.chargedCredits,
+    createdAt: item.createdAt,
   }))
 
   return {

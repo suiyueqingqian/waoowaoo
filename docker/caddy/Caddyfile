@@ -1,0 +1,15 @@
+{
+	# HTTP/2 multiplexes the application's long-lived event streams.
+	servers {
+		protocols h1 h2
+	}
+}
+
+https://{$SELF_HOSTED_HOST:localhost}:{$SELF_HOSTED_HTTPS_PORT:1443} {
+	tls internal
+	reverse_proxy app:3000
+}
+
+http://{$SELF_HOSTED_HOST:localhost}:{$APP_HOST_PORT:13000} {
+	redir https://{$SELF_HOSTED_HOST:localhost}:{$SELF_HOSTED_HTTPS_PORT:1443}{uri} 308
+}

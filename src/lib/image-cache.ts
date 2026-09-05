@@ -1,6 +1,10 @@
 import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core'
+import { EXTERNAL_OPERATION } from '@/lib/external-operation/registry'
+import { fetchSafeOutboundMedia } from '@/lib/media/outbound-fetch'
+import { withRetry } from '@/lib/retry'
 import { toFetchableUrl } from '@/lib/storage'
 import { LRUCache } from 'lru-cache'
+import { MAX_IMAGE_BYTES, readResponseBufferWithLimit } from '@/lib/http/body-limits'
 /**
  * 🔥 图片下载缓存系统
  * 
@@ -108,19 +112,29 @@ async function downloadImageAsBase64(imageUrl: string, logPrefix: string): Promi
     _ulogInfo(`${logPrefix} 开始下载: ${imageUrl.substring(0, 80)}...`)
 
     try {
-        const response = await fetch(toFetchableUrl(imageUrl), {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; ImageDownloader/1.0)'
-            }
+        const downloaded = await withRetry({
+            operation: EXTERNAL_OPERATION.MEDIA_DOWNLOAD,
+            scope: 'media:cached-image-download',
+            run: async () => {
+                const response = await fetchSafeOutboundMedia(toFetchableUrl(imageUrl), {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (compatible; ImageDownloader/1.0)'
+                    }
+                })
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+                }
+
+                return {
+                    buffer: await readResponseBufferWithLimit(response, MAX_IMAGE_BYTES, 'cached image'),
+                    contentType: response.headers.get('content-type') || 'image/png',
+                }
+            },
         })
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-
-        const buffer = await response.arrayBuffer()
-        const base64 = Buffer.from(buffer).toString('base64')
-        const contentType = response.headers.get('content-type') || 'image/png'
+        const buffer = downloaded.buffer
+        const base64 = buffer.toString('base64')
+        const contentType = downloaded.contentType
 
         const duration = Date.now() - startTime
         totalDownloadTime += duration
@@ -158,7 +172,7 @@ export async function preloadImagesParallel(
 ): Promise<string[]> {
     const { logPrefix = '[批量预加载]' } = options
 
-    // 去重（支持 http URL 和本地相对路径 /api/files/...）
+    // 去重（支持 HTTP(S) URL 和应用内相对 API 路径）
     const uniqueUrls = [...new Set(imageUrls.filter(url => url && (url.startsWith('http') || url.startsWith('/'))))]
 
     if (uniqueUrls.length === 0) {

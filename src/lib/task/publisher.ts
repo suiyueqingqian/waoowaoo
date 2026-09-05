@@ -2,22 +2,26 @@ import { prisma } from '@/lib/prisma'
 import { redis } from '@/lib/redis'
 import {
   TASK_EVENT_TYPE,
-  TASK_SSE_EVENT_TYPE,
-  TASK_TYPE,
+  TASK_TERMINAL_EVENT_TYPES,
+  isTaskTerminalEventType,
   type TaskEventType,
   type TaskLifecycleEventType,
-  type SSEEvent,
+  type WorkspaceResourceRef,
 } from './types'
+import {
+  TASK_SSE_EVENT_TYPE,
+  type TaskSSEEvent,
+} from '@/lib/sse/events'
 import { coerceTaskIntent, resolveTaskIntent } from './intent'
-import { mapTaskSSEEventToRunEvents } from '@/lib/run-runtime/task-bridge'
-import { publishRunEvent } from '@/lib/run-runtime/publisher'
+import { withTaskCoveredTargetsPayload } from './covered-targets'
+import { resolveUnifiedErrorCode } from '@/lib/errors/codes'
+
+// No writer since the structured canvas stream removal; the type only keeps
+// historical TaskEvent rows replayable as plain stream events.
+const LEGACY_STRUCTURED_STREAM_CHECKPOINT_EVENT_TYPE = 'task.stream_checkpoint'
 
 const CHANNEL_PREFIX = 'task-events:project:'
 const STREAM_EPHEMERAL_ENABLED = process.env.LLM_STREAM_EPHEMERAL_ENABLED !== 'false'
-const TASK_TYPES_WITH_DIRECT_RUN_EVENTS = new Set<string>([
-  TASK_TYPE.STORY_TO_SCRIPT_RUN,
-  TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN,
-])
 
 type TaskEventRow = {
   id: number
@@ -34,11 +38,13 @@ type TaskMeta = {
   type: string
   targetType: string
   targetId: string
-  episodeId: string | null
+  payload: unknown
 }
 
 type TaskEventModel = {
   create: (args: unknown) => Promise<TaskEventRow>
+  upsert: (args: unknown) => Promise<TaskEventRow>
+  findUnique: (args: unknown) => Promise<TaskEventRow | null>
   findMany: (args: unknown) => Promise<TaskEventRow[]>
 }
 
@@ -56,17 +62,23 @@ function createEphemeralId() {
 function isLifecycleEventType(value: string): value is TaskLifecycleEventType {
   return value === TASK_EVENT_TYPE.CREATED ||
     value === TASK_EVENT_TYPE.PROCESSING ||
+    value === TASK_EVENT_TYPE.PROGRESS ||
     value === TASK_EVENT_TYPE.COMPLETED ||
-    value === TASK_EVENT_TYPE.FAILED
+    value === TASK_EVENT_TYPE.FAILED ||
+    value === TASK_EVENT_TYPE.CANCELED
 }
 
 function normalizeLifecycleType(type: TaskEventType): TaskLifecycleEventType {
   if (isLifecycleEventType(type)) return type
-  return TASK_EVENT_TYPE.PROCESSING
+  throw new Error(`TASK_LIFECYCLE_TYPE_UNSUPPORTED:${type}`)
 }
 
 function isStreamEventType(type: string) {
   return type === TASK_SSE_EVENT_TYPE.STREAM
+}
+
+function isStreamCheckpointEventType(type: string) {
+  return type === LEGACY_STRUCTURED_STREAM_CHECKPOINT_EVENT_TYPE
 }
 
 function shouldReplayLifecycleRow(type: string) {
@@ -89,6 +101,17 @@ function normalizeLifecyclePayload(
     : null
   next.lifecycleType = lifecycleType
   next.intent = coerceTaskIntent(next.intent ?? payloadUi?.intent, taskType)
+  if (lifecycleType === TASK_EVENT_TYPE.FAILED || lifecycleType === TASK_EVENT_TYPE.CANCELED) {
+    // Task.failure remains the diagnostic fact. Lifecycle events are replayed
+    // to browsers and tools, so terminal projections expose codes only.
+    delete next.message
+    delete next.errorMessage
+    if (lifecycleType === TASK_EVENT_TYPE.FAILED) {
+      next.errorCode = resolveUnifiedErrorCode(next.errorCode) ?? 'INTERNAL_ERROR'
+    } else {
+      delete next.errorCode
+    }
+  }
 
   return next
 }
@@ -103,9 +126,9 @@ function buildLifecycleEvent(params: {
   taskType?: string | null
   targetType?: string | null
   targetId?: string | null
-  episodeId?: string | null
   payload?: Record<string, unknown> | null
-}): SSEEvent {
+  coveragePayload?: unknown
+}): TaskSSEEvent {
   return {
     id: params.id,
     type: TASK_SSE_EVENT_TYPE.LIFECYCLE,
@@ -116,9 +139,32 @@ function buildLifecycleEvent(params: {
     taskType: params.taskType || null,
     targetType: params.targetType || null,
     targetId: params.targetId || null,
-    episodeId: params.episodeId || null,
-    payload: normalizeLifecyclePayload(params.lifecycleType, params.taskType, params.payload || null),
+    payload: withTaskCoveredTargetsPayload({
+      taskType: params.taskType,
+      targetType: params.targetType,
+      targetId: params.targetId,
+      payload: normalizeLifecyclePayload(
+        params.lifecycleType,
+        params.taskType,
+        params.payload || null,
+      ),
+      coveragePayload: params.coveragePayload ?? params.payload ?? null,
+    }),
   }
+}
+
+async function loadTaskMeta(taskId: string): Promise<TaskMeta | null> {
+  const rows = await taskModel.findMany({
+    where: { id: { in: [taskId] } },
+    select: {
+      id: true,
+      type: true,
+      targetType: true,
+      targetId: true,
+      payload: true,
+    },
+  })
+  return rows[0] ?? null
 }
 
 function normalizeStreamPayload(
@@ -140,9 +186,8 @@ function buildStreamEvent(params: {
   taskType?: string | null
   targetType?: string | null
   targetId?: string | null
-  episodeId?: string | null
   payload?: Record<string, unknown> | null
-}): SSEEvent {
+}): TaskSSEEvent {
   return {
     id: params.id,
     type: TASK_SSE_EVENT_TYPE.STREAM,
@@ -153,12 +198,11 @@ function buildStreamEvent(params: {
     taskType: params.taskType || null,
     targetType: params.targetType || null,
     targetId: params.targetId || null,
-    episodeId: params.episodeId || null,
     payload: normalizeStreamPayload(params.taskType, params.payload || null),
   }
 }
 
-async function mapRowsToReplayEvents(rows: TaskEventRow[]): Promise<SSEEvent[]> {
+async function mapRowsToReplayEvents(rows: TaskEventRow[]): Promise<TaskSSEEvent[]> {
   if (rows.length === 0) return []
 
   const taskIds = Array.from(new Set(rows.map((row) => row.taskId)))
@@ -170,15 +214,15 @@ async function mapRowsToReplayEvents(rows: TaskEventRow[]): Promise<SSEEvent[]> 
           type: true,
           targetType: true,
           targetId: true,
-          episodeId: true,
+          payload: true,
         },
       })
     : []
   const taskMap = new Map<string, TaskMeta>(tasks.map((task) => [task.id, task]))
 
-  return rows.map((row): SSEEvent => {
+  return rows.map((row): TaskSSEEvent => {
     const task = taskMap.get(row.taskId)
-    if (isStreamEventType(row.eventType)) {
+    if (isStreamEventType(row.eventType) || isStreamCheckpointEventType(row.eventType)) {
       return buildStreamEvent({
         id: String(row.id),
         ts: row.createdAt.toISOString(),
@@ -188,7 +232,6 @@ async function mapRowsToReplayEvents(rows: TaskEventRow[]): Promise<SSEEvent[]> 
         taskType: task?.type || null,
         targetType: task?.targetType || null,
         targetId: task?.targetId || null,
-        episodeId: task?.episodeId || null,
         payload: row.payload || null,
       })
     }
@@ -203,8 +246,8 @@ async function mapRowsToReplayEvents(rows: TaskEventRow[]): Promise<SSEEvent[]> 
       taskType: task?.type || null,
       targetType: task?.targetType || null,
       targetId: task?.targetId || null,
-      episodeId: task?.episodeId || null,
       payload: row.payload || null,
+      coveragePayload: task?.payload ?? row.payload ?? null,
     })
   })
 }
@@ -221,22 +264,85 @@ export async function listTaskLifecycleEvents(taskId: string, limit = 500) {
   return await mapRowsToReplayEvents(replayRows)
 }
 
+export async function listRecentTerminalLifecycleEvents(params: {
+  projectId: string
+  userId: string
+  limit?: number
+}) {
+  const safeLimit = Number.isFinite(params.limit)
+    ? Math.min(Math.max(Math.floor(params.limit ?? 200), 1), 1000)
+    : 200
+  const latestRows = await taskEventModel.findMany({
+    where: {
+      projectId: params.projectId,
+      userId: params.userId,
+      eventType: { in: TASK_TERMINAL_EVENT_TYPES },
+    },
+    orderBy: { id: 'desc' },
+    take: safeLimit,
+  })
+  const events = await mapRowsToReplayEvents([...latestRows].reverse())
+  return events
+}
+
 export function getProjectChannel(projectId: string) {
   return `${CHANNEL_PREFIX}${projectId}`
 }
 
-async function mirrorTaskEventToRun(message: SSEEvent) {
-  if (message.taskType && TASK_TYPES_WITH_DIRECT_RUN_EVENTS.has(message.taskType)) {
-    return
+export function buildTaskLifecycleEventPayload(params: {
+  taskId: string
+  projectId: string
+  lifecycleType: TaskEventType
+  taskType: string
+  targetType: string
+  targetId: string
+  payload?: Record<string, unknown> | null
+  coveragePayload?: unknown
+  affectedResources?: readonly WorkspaceResourceRef[]
+}): Record<string, unknown> {
+  const normalizedType = normalizeLifecycleType(params.lifecycleType)
+  const normalizedPayload = withTaskCoveredTargetsPayload({
+    taskType: params.taskType,
+    targetType: params.targetType,
+    targetId: params.targetId,
+    payload: normalizeLifecyclePayload(
+      params.lifecycleType,
+      params.taskType,
+      params.payload || null,
+    ),
+    coveragePayload: params.coveragePayload ?? params.payload ?? null,
+  })
+  if (normalizedType === TASK_EVENT_TYPE.CREATED) {
+    if (!params.affectedResources) {
+      throw new Error(`TASK_CREATED_AFFECTED_RESOURCES_REQUIRED:${params.taskId}`)
+    }
+    return { ...normalizedPayload, affectedResources: [...params.affectedResources] }
   }
-  const runEvents = mapTaskSSEEventToRunEvents(message)
-  if (runEvents.length === 0) return
-  for (const event of runEvents) {
-    await publishRunEvent(event)
+  if (!isTaskTerminalEventType(normalizedType)) {
+    if (params.affectedResources !== undefined) {
+      throw new Error(`TASK_NON_TERMINAL_AFFECTED_RESOURCES_FORBIDDEN:${params.taskId}`)
+    }
+    return normalizedPayload
   }
+  if (!params.affectedResources) {
+    throw new Error(`TASK_TERMINAL_AFFECTED_RESOURCES_REQUIRED:${params.taskId}`)
+  }
+  return { ...normalizedPayload, affectedResources: [...params.affectedResources] }
 }
 
-export async function publishTaskLifecycleEvent(params: {
+export async function publishPersistedTaskEventById(eventId: number, expectedTaskId?: string): Promise<TaskSSEEvent> {
+  const row = await taskEventModel.findUnique({ where: { id: eventId } })
+  if (!row) throw new Error(`TASK_EVENT_NOT_FOUND:${String(eventId)}`)
+  if (expectedTaskId && row.taskId !== expectedTaskId) {
+    throw new Error(`TASK_EVENT_TASK_MISMATCH:${String(eventId)}:${expectedTaskId}:${row.taskId}`)
+  }
+  const [message] = await mapRowsToReplayEvents([row])
+  if (!message) throw new Error(`TASK_EVENT_MESSAGE_NOT_BUILT:${String(eventId)}`)
+  await redis.publish(getProjectChannel(row.projectId), JSON.stringify(message))
+  return message
+}
+
+async function publishTaskLifecycleEvent(params: {
   taskId: string
   projectId: string
   userId: string
@@ -244,12 +350,31 @@ export async function publishTaskLifecycleEvent(params: {
   taskType?: string | null
   targetType?: string | null
   targetId?: string | null
-  episodeId?: string | null
   payload?: Record<string, unknown> | null
   persist?: boolean
 }) {
+  if (isTaskTerminalEventType(params.lifecycleType)) {
+    throw new Error(`TASK_TERMINAL_EVENT_REQUIRES_TERMINAL_SERVICE:${params.taskId}`)
+  }
   const persist = params.persist !== false
   const normalizedType = normalizeLifecycleType(params.lifecycleType)
+  const taskMeta = await loadTaskMeta(params.taskId)
+  const eventTaskType = params.taskType || taskMeta?.type || null
+  const eventTargetType = params.targetType || taskMeta?.targetType || null
+  const eventTargetId = params.targetId || taskMeta?.targetId || null
+  const coveragePayload = taskMeta?.payload ?? params.payload ?? null
+  const eventPayload = eventTaskType && eventTargetType && eventTargetId
+    ? buildTaskLifecycleEventPayload({
+        taskId: params.taskId,
+        projectId: params.projectId,
+        lifecycleType: params.lifecycleType,
+        taskType: eventTaskType,
+        targetType: eventTargetType,
+        targetId: eventTargetId,
+        payload: params.payload,
+        coveragePayload,
+      })
+    : normalizeLifecyclePayload(params.lifecycleType, eventTaskType, params.payload || null)
   const event = persist
     ? await taskEventModel.create({
         data: {
@@ -257,7 +382,7 @@ export async function publishTaskLifecycleEvent(params: {
           projectId: params.projectId,
           userId: params.userId,
           eventType: normalizedType,
-          payload: normalizeLifecyclePayload(params.lifecycleType, params.taskType, params.payload || null),
+          payload: eventPayload,
         },
       })
     : null
@@ -271,15 +396,14 @@ export async function publishTaskLifecycleEvent(params: {
     taskId: params.taskId,
     projectId: params.projectId,
     userId: params.userId,
-    taskType: params.taskType || null,
-    targetType: params.targetType || null,
-    targetId: params.targetId || null,
-    episodeId: params.episodeId || null,
-    payload: params.payload || null,
+    taskType: eventTaskType,
+    targetType: eventTargetType,
+    targetId: eventTargetId,
+    payload: eventPayload,
+    coveragePayload,
   })
 
   await redis.publish(getProjectChannel(params.projectId), JSON.stringify(message))
-  await mirrorTaskEventToRun(message)
   return message
 }
 
@@ -291,7 +415,6 @@ export async function publishTaskEvent(params: {
   taskType?: string | null
   targetType?: string | null
   targetId?: string | null
-  episodeId?: string | null
   payload?: Record<string, unknown> | null
   persist?: boolean
 }) {
@@ -303,7 +426,6 @@ export async function publishTaskEvent(params: {
     taskType: params.taskType,
     targetType: params.targetType,
     targetId: params.targetId,
-    episodeId: params.episodeId,
     payload: params.payload,
     persist: params.persist,
   })
@@ -316,43 +438,24 @@ export async function publishTaskStreamEvent(params: {
   taskType?: string | null
   targetType?: string | null
   targetId?: string | null
-  episodeId?: string | null
   payload?: Record<string, unknown> | null
-  persist?: boolean
 }) {
   if (!STREAM_EPHEMERAL_ENABLED) return null
 
-  const persist = params.persist === true
   const normalizedPayload = normalizeStreamPayload(params.taskType, params.payload || null)
-  const event = persist
-    ? await taskEventModel.create({
-        data: {
-          taskId: params.taskId,
-          projectId: params.projectId,
-          userId: params.userId,
-          eventType: TASK_SSE_EVENT_TYPE.STREAM,
-          payload: normalizedPayload,
-        },
-      })
-    : null
-  const ts = (event?.createdAt || new Date()).toISOString()
-  const id = event?.id ? String(event.id) : createEphemeralId()
-
   const message = buildStreamEvent({
-    id,
-    ts,
+    id: createEphemeralId(),
+    ts: new Date().toISOString(),
     taskId: params.taskId,
     projectId: params.projectId,
     userId: params.userId,
     taskType: params.taskType || null,
     targetType: params.targetType || null,
     targetId: params.targetId || null,
-    episodeId: params.episodeId || null,
     payload: normalizedPayload,
   })
 
   await redis.publish(getProjectChannel(params.projectId), JSON.stringify(message))
-  await mirrorTaskEventToRun(message)
   return message
 }
 

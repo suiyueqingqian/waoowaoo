@@ -3,25 +3,16 @@
  * 所有缓存 key 在此集中管理，避免不一致
  */
 const globalAssetsRoot = () => ['global-assets'] as const
-const projectAssetsRoot = (projectId: string) => ['project-assets', projectId] as const
-const unifiedAssetsRoot = (
-    scope: 'global' | 'project',
-    projectId?: string | null,
-) => scope === 'global'
-    ? [...globalAssetsRoot(), 'unified'] as const
-    : [...projectAssetsRoot(projectId ?? ''), 'unified'] as const
+const unifiedAssetsRoot = () => [...globalAssetsRoot(), 'unified'] as const
 
 export const queryKeys = {
     assets: {
-        all: (scope: 'global' | 'project', projectId?: string | null) =>
-            unifiedAssetsRoot(scope, projectId),
+        all: () => unifiedAssetsRoot(),
         list: (params: {
-            scope: 'global' | 'project'
-            projectId?: string | null
             folderId?: string | null
-            kind?: 'character' | 'location' | 'voice' | 'prop' | null
+            kind?: 'character' | 'location' | 'prop' | null
         }) => [
-            ...unifiedAssetsRoot(params.scope, params.projectId),
+            ...unifiedAssetsRoot(),
             params.folderId ?? '',
             params.kind ?? '',
         ] as const,
@@ -34,43 +25,19 @@ export const queryKeys = {
             folderId ? ['global-assets', 'characters', folderId] as const : ['global-assets', 'characters'] as const,
         locations: (folderId?: string | null) =>
             folderId ? ['global-assets', 'locations', folderId] as const : ['global-assets', 'locations'] as const,
-        voices: (folderId?: string | null) =>
-            folderId ? ['global-assets', 'voices', folderId] as const : ['global-assets', 'voices'] as const,
         folders: () => ['global-assets', 'folders'] as const,
-    },
-
-    // ============ 项目资产 ============
-    projectAssets: {
-        all: projectAssetsRoot,
-        characters: (projectId: string) => ['project-assets', projectId, 'characters'] as const,
-        locations: (projectId: string) => ['project-assets', projectId, 'locations'] as const,
-        detail: (projectId: string) => ['project-assets', projectId, 'detail'] as const,
-    },
-
-    // ============ 分镜（Storyboard）============
-    storyboards: {
-        all: (episodeId: string) => ['storyboards', episodeId] as const,
-        panels: (episodeId: string) => ['storyboards', episodeId, 'panels'] as const,
-        groups: (episodeId: string) => ['storyboards', episodeId, 'groups'] as const,
-    },
-
-    // ============ 视频生成 ============
-    videos: {
-        all: (episodeId: string) => ['videos', episodeId] as const,
-        panels: (episodeId: string) => ['videos', episodeId, 'panels'] as const,
-    },
-
-    // ============ 语音（Voice）============
-    voiceLines: {
-        all: (episodeId: string) => ['voice-lines', episodeId] as const,
-        list: (episodeId: string) => ['voice-lines', episodeId, 'list'] as const,
-        matched: (projectId: string, episodeId: string) =>
-            ['voice-lines', projectId, episodeId, 'matched'] as const,
     },
 
     // ============ 用户模型 ============
     userModels: {
         all: () => ['user-models'] as const,
+    },
+
+    operationPlans: {
+        all: (projectId: string) =>
+            ['operation-plan-preview', projectId] as const,
+        preview: (projectId: string, operationId: string, inputKey: string) =>
+            ['operation-plan-preview', projectId, operationId, inputKey] as const,
     },
 
     // ============ 任务轮询 ============
@@ -86,17 +53,21 @@ export const queryKeys = {
             ['task-target-states', projectId, serializedTargets] as const,
         targetStateOverlay: (projectId: string) =>
             ['task-target-states-overlay', projectId] as const,
-        pending: (projectId: string, episodeId?: string) =>
-            episodeId
-                ? ['pending-tasks', projectId, episodeId] as const
-                : ['pending-tasks', projectId] as const,
     },
 
     // ============ 项目数据 ============
     project: {
-        detail: (projectId: string) => ['project', projectId] as const,
-        episodes: (projectId: string) => ['project', projectId, 'episodes'] as const,
-        data: (projectId: string) => ['project', projectId, 'data'] as const,
+        canvasLayout: (projectId: string, folderKey: string) =>
+            ['project', projectId, 'canvas-layout', folderKey] as const,
+        canvasGenerationCapabilitiesAll: () => ['canvas-generation-capabilities'] as const,
+        canvasGenerationCapabilities: (projectId: string) =>
+            ['canvas-generation-capabilities', projectId] as const,
+        workspaceResourcesAll: (projectId: string) =>
+            ['project', projectId, 'workspace-resources'] as const,
+        workspaceResources: (projectId: string) =>
+            ['project', projectId, 'workspace-resources'] as const,
+        assistantThread: (projectId: string) =>
+            ['project', projectId, 'assistant-thread'] as const,
     },
 
     // ============ 顶层便捷函数 ============
@@ -105,11 +76,6 @@ export const queryKeys = {
      */
     projectData: (projectId: string) => ['project-data', projectId] as const,
 
-    /**
-     * 剧集详情数据
-     */
-    episodeData: (projectId: string, episodeId: string) =>
-        ['episode-data', projectId, episodeId] as const,
 } as const
 
 /**

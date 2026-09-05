@@ -1,120 +1,87 @@
+import { describeUnknownError } from '@/lib/errors/normalize'
 import { createScopedLogger } from '@/lib/logging/core'
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError, getRequestId } from '@/lib/api-errors'
-import { getProjectChannel, listEventsAfter } from '@/lib/task/publisher'
+import { executeProjectAgentOperationFromApi } from '@/lib/adapters/api/execute-project-agent-operation'
 import { isErrorResponse, requireProjectAuthLight, requireUserAuth } from '@/lib/api-auth'
-import { TASK_EVENT_TYPE, TASK_SSE_EVENT_TYPE, type SSEEvent } from '@/lib/task/types'
+import {
+  isAgentScopedSseEvent,
+  type SSEEvent,
+} from '@/lib/sse/events'
+import { getProjectChannel } from '@/lib/task/publisher'
+import {
+  advanceWorkspaceSseCursor,
+  parseWorkspaceSseBootstrap,
+  parseWorkspaceSseCursor,
+  parseWorkspaceSseEventMessage,
+  serializeWorkspaceSseCursor,
+  WORKSPACE_SSE_CONTROL_EVENT_TYPE,
+  WORKSPACE_SSE_HEARTBEAT_INTERVAL_MS,
+} from '@/lib/sse/protocol'
+import {
+  WorkspaceSseServerSession,
+} from '@/lib/sse/server-session'
 import { getSharedSubscriber } from '@/lib/sse/shared-subscriber'
-import { prisma } from '@/lib/prisma'
-import { coerceTaskIntent } from '@/lib/task/intent'
+import {
+  acquireWorkspaceSseConnectionLease,
+  WORKSPACE_SSE_LEASE_RENEW_INTERVAL_MS,
+} from '@/lib/sse/connection-lease'
+import { GLOBAL_ASSET_PROJECT_ID } from '@/lib/workspace-resource/resource-impact'
+import { readWorkspaceResourceRevision } from '@/lib/workspace-resource/projection-revision'
 
-function parseReplayCursorId(value: string | null): number {
-  if (!value) return 0
-  const trimmed = value.trim()
-  if (!trimmed || !/^\d+$/.test(trimmed)) return 0
-  const parsed = Number.parseInt(trimmed, 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
-}
-
-function formatSSE(event: SSEEvent) {
+function formatSSE(event: SSEEvent, transportCursor: string) {
   const dataLine = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
-  if (typeof event.id === 'string' && /^\d+$/.test(event.id)) {
-    return `id: ${event.id}\n${dataLine}`
-  }
-  return dataLine
+  return `id: ${transportCursor}\n${dataLine}`
 }
 
-function formatHeartbeat() {
-  return `event: heartbeat\ndata: {"ts":"${new Date().toISOString()}"}\n\n`
-}
-
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  return value as Record<string, unknown>
-}
-
-async function listActiveLifecycleSnapshot(params: {
-  projectId: string
-  episodeId: string | null
-  userId: string
-  limit?: number
-}) {
-  const limit = params.limit || 500
-  const rows = await prisma.task.findMany({
-    where: {
-      projectId: params.projectId,
-      userId: params.userId,
-      status: {
-        in: ['queued', 'processing']},
-      ...(params.episodeId ? { episodeId: params.episodeId } : {})},
-    orderBy: {
-      updatedAt: 'desc'},
-    take: limit,
-    select: {
-      id: true,
-      type: true,
-      targetType: true,
-      targetId: true,
-      episodeId: true,
-      userId: true,
-      status: true,
-      progress: true,
-      payload: true,
-      updatedAt: true}})
-
-  return rows.map((row): SSEEvent => {
-    const payload = asObject(row.payload)
-    const payloadUi = asObject(payload?.ui)
-    const lifecycleType = row.status === 'queued'
-      ? TASK_EVENT_TYPE.CREATED
-      : TASK_EVENT_TYPE.PROCESSING
-    const eventPayload: Record<string, unknown> = {
-      ...(payload || {}),
-      lifecycleType,
-      intent: coerceTaskIntent(payloadUi?.intent ?? payload?.intent, row.type),
-      progress: typeof row.progress === 'number' ? row.progress : null}
-
-    return {
-      id: `snapshot:${row.id}:${row.updatedAt.getTime()}`,
-      type: TASK_SSE_EVENT_TYPE.LIFECYCLE,
-      taskId: row.id,
-      projectId: params.projectId,
-      userId: row.userId,
-      ts: row.updatedAt.toISOString(),
-      taskType: row.type,
-      targetType: row.targetType,
-      targetId: row.targetId,
-      episodeId: row.episodeId,
-      payload: eventPayload}
-  })
+function formatHeartbeat(workspaceResourceRevision: number | null) {
+  return `event: ${WORKSPACE_SSE_CONTROL_EVENT_TYPE.HEARTBEAT}\ndata: ${JSON.stringify({
+    ts: new Date().toISOString(),
+    workspaceResourceRevision,
+  })}\n\n`
 }
 
 export const GET = apiHandler(async (request: NextRequest) => {
   const projectId = request.nextUrl.searchParams.get('projectId')
-  const episodeId = request.nextUrl.searchParams.get('episodeId')
-  if (!projectId) {
+  const connectionId = request.nextUrl.searchParams.get('connectionId')
+  if (!projectId || !connectionId || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(connectionId)) {
     throw new ApiError('INVALID_PARAMS')
   }
 
-  const authResult = projectId === 'global-asset-hub'
+  const authResult = projectId === GLOBAL_ASSET_PROJECT_ID
     ? await requireUserAuth()
     : await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
+  const connectionLease = await acquireWorkspaceSseConnectionLease({
+    userId: session.user.id,
+    projectId,
+    connectionId,
+  })
+  if (!connectionLease) {
+    throw new ApiError('RATE_LIMIT', {
+      code: 'SSE_CONNECTION_LIMIT_REACHED',
+      retryAfterSeconds: Math.ceil(WORKSPACE_SSE_LEASE_RENEW_INTERVAL_MS / 1000),
+    })
+  }
 
-  const channel = getProjectChannel(projectId)
   const sharedSubscriber = getSharedSubscriber()
   const requestId = getRequestId(request)
   const encoder = new TextEncoder()
-  const lastEventId = parseReplayCursorId(request.headers.get('last-event-id'))
   const signal = request.signal
+  const requestCursor = request.headers.get('last-event-id')
+    || request.nextUrl.searchParams.get('cursor')
+  const initialCursor = parseWorkspaceSseCursor(requestCursor)
   let closeStream: (() => Promise<void>) | null = null
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false
       let timer: ReturnType<typeof setInterval> | null = null
+      let leaseTimer: ReturnType<typeof setInterval> | null = null
       let unsubscribe: (() => Promise<void>) | null = null
+      let cleanupPromise: Promise<void> | null = null
+      let heartbeatInFlight = false
       const logger = createScopedLogger({
         module: 'sse',
         action: 'sse.stream',
@@ -125,73 +92,205 @@ export const GET = apiHandler(async (request: NextRequest) => {
         action: 'sse.connect',
         message: 'sse connection established',
         details: {
-          lastEventId: lastEventId || 0}})
+          lastEventId: requestCursor || '0'}})
 
       const safeEnqueue = (chunk: string) => {
         if (closed) return
         controller.enqueue(encoder.encode(chunk))
       }
 
-      const close = async () => {
+      let transportCursor = initialCursor
+      const serverSession = new WorkspaceSseServerSession((event) => {
+        transportCursor = advanceWorkspaceSseCursor(transportCursor, event)
+        safeEnqueue(formatSSE(event, serializeWorkspaceSseCursor(transportCursor)))
+      })
+
+      const cleanup = async () => {
+        if (cleanupPromise) return await cleanupPromise
+        cleanupPromise = (async () => {
+          serverSession.close()
+          if (timer) {
+            clearInterval(timer)
+            timer = null
+          }
+          if (leaseTimer) {
+            clearInterval(leaseTimer)
+            leaseTimer = null
+          }
+          const removeListener = unsubscribe
+          unsubscribe = null
+          try {
+            await removeListener?.()
+          } catch (error) {
+            logger.error({
+              action: 'sse.unsubscribe.failed',
+              message: 'failed to release sse subscriber listener',
+              error: error instanceof Error
+                ? { name: error.name, message: error.message, stack: error.stack }
+                : { message: describeUnknownError(error) },
+            })
+          }
+          try {
+            await connectionLease.release()
+          } catch (error) {
+            logger.error({
+              action: 'sse.connection_lease.release_failed',
+              message: 'failed to release sse connection lease',
+              error: error instanceof Error
+                ? { name: error.name, message: error.message, stack: error.stack }
+                : { message: describeUnknownError(error) },
+            })
+          }
+          signal.removeEventListener('abort', abortHandler)
+        })()
+        return await cleanupPromise
+      }
+
+      const fail = async (error: unknown) => {
         if (closed) return
         closed = true
-        try {
-          await unsubscribe?.()
-        } catch {}
-        logger.info({
-          action: 'sse.disconnect',
-          message: 'sse connection closed'})
-        if (timer) {
-          clearInterval(timer)
-          timer = null
+        logger.error({
+          action: 'sse.stream.failed',
+          message: 'sse stream failed and will be terminated',
+          error: error instanceof Error
+            ? { name: error.name, message: error.message, stack: error.stack }
+            : { message: describeUnknownError(error) },
+        })
+        await cleanup()
+        controller.error(error)
+      }
+
+      const close = async () => {
+        const shouldCloseController = !closed
+        closed = true
+        await cleanup()
+        if (shouldCloseController) {
+          logger.info({
+            action: 'sse.disconnect',
+            message: 'sse connection closed'})
+          try {
+            controller.close()
+          } catch {}
         }
-        try {
-          controller.close()
-        } catch {}
       }
       closeStream = close
 
-      signal.addEventListener('abort', () => {
-        void close()
-      })
-
-      if (lastEventId > 0) {
-        const missed = await listEventsAfter(projectId, lastEventId, 5000)
-        logger.info({
-          action: 'sse.replay',
-          message: 'sse replay sent',
-          details: {
-            fromEventId: lastEventId,
-            count: missed.length}})
-        for (const event of missed) {
-          safeEnqueue(formatSSE(event))
-        }
-      } else {
-        const snapshotEvents = await listActiveLifecycleSnapshot({
-          projectId,
-          episodeId,
-          userId: session.user.id,
-          limit: 500})
-        logger.info({
-          action: 'sse.active_snapshot',
-          message: 'sse active snapshot sent',
-          details: {
-            count: snapshotEvents.length}})
-        for (const event of snapshotEvents) {
-          safeEnqueue(formatSSE(event))
+      const sendHeartbeat = async (): Promise<void> => {
+        if (closed || heartbeatInFlight) return
+        heartbeatInFlight = true
+        try {
+          const workspaceResourceRevision = projectId === GLOBAL_ASSET_PROJECT_ID
+            ? null
+            : await readWorkspaceResourceRevision({
+                projectId,
+                userId: session.user.id,
+              })
+          if (!closed) safeEnqueue(formatHeartbeat(workspaceResourceRevision))
+        } finally {
+          heartbeatInFlight = false
         }
       }
 
-      unsubscribe = await sharedSubscriber.addChannelListener(channel, (message) => {
-        try {
-          const event = JSON.parse(message) as SSEEvent
-          safeEnqueue(formatSSE(event))
-        } catch {
-          safeEnqueue(`data: ${message}\n\n`)
-        }
-      })
+      const abortHandler = () => {
+        void close()
+      }
+      signal.addEventListener('abort', abortHandler)
+      if (signal.aborted) {
+        await close()
+        return
+      }
+      leaseTimer = setInterval(() => {
+        void connectionLease.renew().then((renewed) => {
+          if (!renewed) {
+            // A newer connection with the same stable tab identity owns the
+            // lease now. Closing this superseded stream is the normal ARL-16
+            // handoff; only renewal infrastructure failures use fail().
+            void close()
+          }
+        }).catch((error: unknown) => {
+          void fail(error)
+        })
+      }, WORKSPACE_SSE_LEASE_RENEW_INTERVAL_MS)
 
-      timer = setInterval(() => safeEnqueue(formatHeartbeat()), 15_000)
+      try {
+        const expectedChannel = getProjectChannel(projectId)
+        const removeListener = await sharedSubscriber.addChannelListener(expectedChannel, (message) => {
+          try {
+            const payload = parseWorkspaceSseEventMessage(message)
+            if (payload.projectId !== projectId) {
+              throw new Error(`SSE_MESSAGE_PROJECT_MISMATCH:${payload.projectId}:${projectId}`)
+            }
+            if (isAgentScopedSseEvent(payload)) {
+              if (payload.userId !== session.user.id) return
+              if (payload.assistantId !== 'workspace-command') return
+            }
+            if (projectId === GLOBAL_ASSET_PROJECT_ID && payload.userId !== session.user.id) {
+              logger.error({
+                action: 'sse.message.user_mismatch',
+                message: 'sse message userId mismatch',
+                details: { eventUserId: payload.userId, sessionUserId: session.user.id },
+              })
+              return
+            }
+            serverSession.receiveLiveEvent(payload)
+          } catch (error) {
+            logger.error({
+              action: 'sse.message.invalid',
+              message: 'invalid sse message',
+              details: {
+                message,
+                error: describeUnknownError(error),
+              },
+            })
+            void fail(error)
+          }
+        })
+        if (closed) {
+          await removeListener()
+          return
+        }
+        unsubscribe = removeListener
+
+        const bootstrap = await executeProjectAgentOperationFromApi({
+          request,
+          operationId: 'get_sse_bootstrap',
+          projectId,
+          userId: session.user.id,
+          input: {
+            lastEventId: requestCursor,
+            includeRecoverableSnapshot: true,
+          },
+          source: 'project-ui',
+        })
+
+        if (closed) return
+        const { channel, events, mode } = parseWorkspaceSseBootstrap(bootstrap)
+
+        if (channel !== expectedChannel) {
+          throw new ApiError('EXTERNAL_ERROR', {
+            code: 'SSE_BOOTSTRAP_CHANNEL_MISMATCH',
+            message: 'get_sse_bootstrap returned a different channel',
+          })
+        }
+
+        logger.info({
+          action: mode.startsWith('replay') ? 'sse.replay' : 'sse.active_snapshot',
+          message: 'sse bootstrap sent',
+          details: { mode, count: events.length },
+        })
+
+        serverSession.completeBootstrap(events)
+        if (closed) return
+        await sendHeartbeat()
+        if (closed) return
+        timer = setInterval(() => {
+          void sendHeartbeat().catch((error: unknown) => {
+            void fail(error)
+          })
+        }, WORKSPACE_SSE_HEARTBEAT_INTERVAL_MS)
+      } catch (error) {
+        await fail(error)
+      }
     },
     cancel() {
       void closeStream?.()

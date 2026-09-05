@@ -10,7 +10,12 @@ export interface ErrorFields {
 
 export interface LogContext {
   requestId?: string
+  providerRequestId?: string
   taskId?: string
+  taskAttempt?: number
+  threadId?: string
+  turnId?: string
+  operationId?: string
   projectId?: string
   userId?: string
   provider?: string
@@ -33,7 +38,12 @@ export interface LogEvent {
   action?: string
   message: string
   requestId?: string
+  providerRequestId?: string
   taskId?: string
+  taskAttempt?: number
+  threadId?: string
+  turnId?: string
+  operationId?: string
   projectId?: string
   userId?: string
   errorCode?: string

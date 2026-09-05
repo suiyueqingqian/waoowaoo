@@ -14,6 +14,25 @@
     }
   },
   {
+    "modelType": "image",
+    "provider": "fal",
+    "modelId": "gpt-image-2",
+    "capabilities": {
+      "image": {
+        "resolutionOptions": [
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "qualityOptions": [
+          "high",
+          "medium",
+          "low"
+        ]
+      }
+    }
+  },
+  {
     "modelType": "video",
     "provider": "ark",
     "modelId": "doubao-seedance-2-0-260128",
@@ -24,6 +43,10 @@
           "firstlastframe"
         ],
         "generateAudioOptions": [
+          true,
+          false
+        ],
+        "containsVideoInputOptions": [
           true,
           false
         ],
@@ -61,6 +84,10 @@
           "firstlastframe"
         ],
         "generateAudioOptions": [
+          true,
+          false
+        ],
+        "containsVideoInputOptions": [
           true,
           false
         ],
@@ -385,7 +412,7 @@
   {
     "modelType": "llm",
     "provider": "google",
-    "modelId": "gemini-3-flash-preview",
+    "modelId": "gemini-3.5-flash",
     "capabilities": {
       "llm": {
         "reasoningEffortOptions": [
@@ -464,6 +491,7 @@
     "capabilities": {
       "image": {
         "resolutionOptions": [
+          "1K",
           "2K",
           "4K"
         ]
@@ -477,6 +505,7 @@
     "capabilities": {
       "image": {
         "resolutionOptions": [
+          "1K",
           "2K",
           "4K"
         ]
@@ -502,6 +531,18 @@
     "modelType": "image",
     "provider": "google",
     "modelId": "gemini-2.5-flash-image",
+    "capabilities": {
+      "image": {
+        "resolutionOptions": [
+          "1K"
+        ]
+      }
+    }
+  },
+  {
+    "modelType": "image",
+    "provider": "google",
+    "modelId": "gemini-2.5-flash-image-preview",
     "capabilities": {
       "image": {
         "resolutionOptions": [
@@ -642,6 +683,114 @@
   {
     "modelType": "video",
     "provider": "fal",
+    "modelId": "alibaba/happy-horse/image-to-video",
+    "capabilities": {
+      "video": {
+        "generationModeOptions": [
+          "normal"
+        ],
+        "durationOptions": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "resolutionOptions": [
+          "720p",
+          "1080p"
+        ],
+        "firstlastframe": false,
+        "supportGenerateAudio": true
+      }
+    }
+  },
+  {
+    "modelType": "video",
+    "provider": "fal",
+    "modelId": "bytedance/seedance-2.0",
+    "capabilities": {
+      "video": {
+        "generationModeOptions": [
+          "normal",
+          "firstlastframe"
+        ],
+        "generateAudioOptions": [
+          true,
+          false
+        ],
+        "durationOptions": [
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "resolutionOptions": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "firstlastframe": true,
+        "supportGenerateAudio": true
+      }
+    }
+  },
+  {
+    "modelType": "video",
+    "provider": "fal",
+    "modelId": "bytedance/seedance-2.0/fast",
+    "capabilities": {
+      "video": {
+        "generationModeOptions": [
+          "normal",
+          "firstlastframe"
+        ],
+        "generateAudioOptions": [
+          true,
+          false
+        ],
+        "durationOptions": [
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "resolutionOptions": [
+          "480p",
+          "720p"
+        ],
+        "firstlastframe": true,
+        "supportGenerateAudio": true
+      }
+    }
+  },
+  {
+    "modelType": "video",
+    "provider": "fal",
     "modelId": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
     "capabilities": {
       "video": {
@@ -716,424 +865,24 @@
     }
   },
   {
-    "modelType": "video",
-    "provider": "bailian",
-    "modelId": "wan2.7-i2v",
+    "modelType": "voice",
+    "provider": "fal",
+    "modelId": "fal-ai/qwen-3-tts/voice-design/1.7b",
     "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal",
-          "firstlastframe"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "bailian",
-    "modelId": "wan2.6-i2v-flash",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal"
-        ],
-        "firstlastframe": false,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "bailian",
-    "modelId": "wan2.6-i2v",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal"
-        ],
-        "firstlastframe": false,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "bailian",
-    "modelId": "wan2.5-i2v-preview",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal"
-        ],
-        "firstlastframe": false,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "bailian",
-    "modelId": "wan2.2-i2v-plus",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal"
-        ],
-        "firstlastframe": false,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "bailian",
-    "modelId": "wan2.2-kf2v-flash",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "firstlastframe"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "bailian",
-    "modelId": "wanx2.1-kf2v-plus",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "firstlastframe"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "minimax",
-    "modelId": "minimax-hailuo-2.3",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal"
-        ],
-        "durationOptions": [
-          6,
-          10
-        ],
-        "resolutionOptions": [
-          "768p",
-          "1080p"
-        ],
-        "firstlastframe": false,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "minimax",
-    "modelId": "minimax-hailuo-2.3-fast",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal"
-        ],
-        "durationOptions": [
-          6,
-          10
-        ],
-        "resolutionOptions": [
-          "768p",
-          "1080p"
-        ],
-        "firstlastframe": false,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "minimax",
-    "modelId": "minimax-hailuo-02",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal",
-          "firstlastframe"
-        ],
-        "durationOptions": [
-          6,
-          10
-        ],
-        "resolutionOptions": [
-          "512p",
-          "768p",
-          "1080p"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "minimax",
-    "modelId": "t2v-01",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal"
-        ],
-        "durationOptions": [
-          6
-        ],
-        "resolutionOptions": [
-          "720p"
-        ],
-        "firstlastframe": false,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "minimax",
-    "modelId": "t2v-01-director",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal"
-        ],
-        "durationOptions": [
-          6
-        ],
-        "resolutionOptions": [
-          "720p"
-        ],
-        "firstlastframe": false,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "vidu",
-    "modelId": "viduq3-pro",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal",
-          "firstlastframe"
-        ],
-        "generateAudioOptions": [
-          false,
-          true
-        ],
-        "durationOptions": [
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10,
-          11,
-          12,
-          13,
-          14,
-          15,
-          16
-        ],
-        "resolutionOptions": [
-          "540p",
-          "720p",
-          "1080p"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": true
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "vidu",
-    "modelId": "viduq2-pro-fast",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal",
-          "firstlastframe"
-        ],
-        "generateAudioOptions": [
-          false,
-          true
-        ],
-        "durationOptions": [
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10
-        ],
-        "resolutionOptions": [
-          "720p",
-          "1080p"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": true
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "vidu",
-    "modelId": "viduq2-pro",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal",
-          "firstlastframe"
-        ],
-        "generateAudioOptions": [
-          false,
-          true
-        ],
-        "durationOptions": [
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10
-        ],
-        "resolutionOptions": [
-          "540p",
-          "720p",
-          "1080p"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": true
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "vidu",
-    "modelId": "viduq2-turbo",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal",
-          "firstlastframe"
-        ],
-        "generateAudioOptions": [
-          false,
-          true
-        ],
-        "durationOptions": [
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10
-        ],
-        "resolutionOptions": [
-          "540p",
-          "720p",
-          "1080p"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": true
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "vidu",
-    "modelId": "viduq1",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal",
-          "firstlastframe"
-        ],
-        "durationOptions": [
-          5
-        ],
-        "resolutionOptions": [
-          "1080p"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "vidu",
-    "modelId": "viduq1-classic",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal",
-          "firstlastframe"
-        ],
-        "durationOptions": [
-          5
-        ],
-        "resolutionOptions": [
-          "1080p"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": false
-      }
-    }
-  },
-  {
-    "modelType": "video",
-    "provider": "vidu",
-    "modelId": "vidu2.0",
-    "capabilities": {
-      "video": {
-        "generationModeOptions": [
-          "normal",
-          "firstlastframe"
-        ],
-        "durationOptions": [
-          4,
-          8
-        ],
-        "resolutionOptions": [
-          "360p",
-          "720p",
-          "1080p"
-        ],
-        "firstlastframe": true,
-        "supportGenerateAudio": false
+      "voice": {
+        "languageOptions": [
+          "Auto",
+          "English",
+          "Chinese",
+          "Spanish",
+          "French",
+          "German",
+          "Italian",
+          "Japanese",
+          "Korean",
+          "Portuguese",
+          "Russian"
+        ]
       }
     }
   }

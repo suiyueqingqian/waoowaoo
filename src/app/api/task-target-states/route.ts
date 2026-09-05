@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { executeProjectAgentOperationFromApi } from '@/lib/adapters/api/execute-project-agent-operation'
 import {
   isErrorResponse,
   requireProjectAuthLight,
-  requireUserAuth} from '@/lib/api-auth'
-import { withPrismaRetry } from '@/lib/prisma-retry'
-import { queryTaskTargetStates, type TaskTargetQuery } from '@/lib/task/state-service'
+  requireUserAuth,
+} from '@/lib/api-auth'
+import { GLOBAL_ASSET_PROJECT_ID } from '@/lib/workspace-resource/resource-impact'
+
+type TaskTargetQuery = {
+  targetType: string
+  targetId: string
+  types?: string[]
+}
 
 function normalizeTarget(input: unknown): TaskTargetQuery {
   const payload = input as Record<string, unknown>
@@ -22,7 +29,8 @@ function normalizeTarget(input: unknown): TaskTargetQuery {
   return {
     targetType,
     targetId,
-    ...(types && types.length > 0 ? { types } : {})}
+    ...(types && types.length > 0 ? { types } : {}),
+  }
 }
 
 export const POST = apiHandler(async (request: NextRequest) => {
@@ -30,8 +38,13 @@ export const POST = apiHandler(async (request: NextRequest) => {
   try {
     body = await request.json()
   } catch {
-    throw new ApiError('INVALID_PARAMS')
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'BODY_PARSE_FAILED',
+      field: 'body',
+      message: 'request body must be valid JSON',
+    })
   }
+
   const projectId = typeof body?.projectId === 'string' ? body.projectId.trim() : ''
   const targetsRaw = Array.isArray(body?.targets) ? body.targets : null
 
@@ -50,7 +63,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
   }
 
   let userId: string
-  if (projectId === 'global-asset-hub') {
+  if (projectId === GLOBAL_ASSET_PROJECT_ID) {
     const authResult = await requireUserAuth()
     if (isErrorResponse(authResult)) return authResult
     userId = authResult.session.user.id
@@ -60,12 +73,14 @@ export const POST = apiHandler(async (request: NextRequest) => {
     userId = authResult.session.user.id
   }
 
-  const states = await withPrismaRetry(() =>
-    queryTaskTargetStates({
-      projectId,
-      userId,
-      targets})
-  )
+  const result = await executeProjectAgentOperationFromApi({
+    request,
+    operationId: 'get_task_status',
+    projectId,
+    userId,
+    input: { targets },
+    source: 'project-ui',
+  })
 
-  return NextResponse.json({ states })
+  return NextResponse.json(result)
 })

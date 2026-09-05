@@ -1,7 +1,15 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import { resolve } from 'node:path'
+import { readDeploymentEdition } from './src/lib/deployment/edition'
+
+const deploymentEdition = readDeploymentEdition()
 
 export default defineConfig({
+  oxc: {
+    jsx: {
+      runtime: 'automatic',
+    },
+  },
   css: {
     postcss: {
       plugins: [],
@@ -10,21 +18,23 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      '@skills': resolve(__dirname, 'skills'),
+      '@edition-implementation': resolve(
+        __dirname,
+        deploymentEdition === 'cloud' ? 'ee/src/edition' : 'src/editions/self-hosted',
+      ),
+      ...(deploymentEdition === 'cloud' ? { '@ee': resolve(__dirname, 'ee/src') } : {}),
     },
   },
   test: {
     environment: 'node',
     css: false,
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        minForks: 1,
-        maxForks: 1,
-      },
-    },
+    maxWorkers: 1,
     setupFiles: ['./tests/setup/env.ts'],
     globalSetup: ['./tests/setup/global-setup.ts'],
-    include: ['**/*.test.ts'],
+    include: ['**/*.test.ts', '**/*.test.tsx'],
+    exclude: [...configDefaults.exclude, '**/.stryker-tmp/**'],
     testTimeout: 30_000,
     hookTimeout: 60_000,
     coverage: {

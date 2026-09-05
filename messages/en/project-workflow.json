@@ -1,0 +1,266 @@
+{
+  "canvas": {
+    "workspace": {
+      "toolbar": {
+        "fitView": "Fit view",
+        "zoomIn": "Zoom in",
+        "zoomOut": "Zoom out",
+        "arrange": "Reset layout",
+        "arrangeFailed": "Could not save the layout. Please retry."
+      },
+      "actions": {
+        "discuss": "Discuss with AI",
+        "preview": "Preview",
+        "copyPrompt": "Copy prompt",
+        "copyPromptSuccess": "Prompt copied",
+        "copyPromptFailed": "Could not copy the prompt",
+        "download": "Download",
+        "retry": "Retry",
+        "regenerate": "Run again",
+        "animate": "Generate video",
+        "useAsReference": "Use as reference",
+        "delete": "Delete",
+        "unavailable": "This action is unavailable"
+      },
+      "errors": {
+        "unknown": "This Resource could not be generated. You can retry it.",
+        "providerDiagnostic": "Provider error: {message}"
+      },
+      "preview": {
+        "position": "{current} / {total}",
+        "discuss": "Discuss this result",
+        "groupDescription": "Browse {count} independently generated results.",
+        "singleDescription": "Preview this Resource.",
+        "previous": "Previous result",
+        "next": "Next result",
+        "structuredUnknown": "Structured content",
+        "structuredEntries": "Structured content · {count} entries"
+      },
+      "operationConfirm": {
+        "failed": "The operation could not be completed",
+        "destructiveTitle": "Confirm action",
+        "title": "Confirm generation",
+        "destructiveDescription": "Review this action before continuing.",
+        "description": "Review the number of generation tasks and the maximum quoted cost.",
+        "cancel": "Cancel",
+        "executing": "Submitting…",
+        "deleting": "Deleting…",
+        "confirm": "Confirm and create",
+        "confirmDelete": "Confirm deletion",
+        "taskCount": "{count} generation tasks",
+        "priceHidden": "Price hidden",
+        "priceCredits": "Up to {cost} credits",
+        "destructiveBody": "Remove “{target}” from the current project tree. This is a soft delete and remains recoverable through the system restore capability.",
+        "destructiveBodyMany": "Remove {count} resources from the current project tree: {names}. This is a soft delete; undo (⌘Z) brings them back."
+      },
+      "history": {
+        "restored": "Restored {count} resources",
+        "restoreFailed": "Restore failed"
+      },
+      "create": {
+        "menuTitle": "What goes here?",
+        "image": "Generate image",
+        "video": "Generate video",
+        "upload": "Upload material",
+        "draftTitle": {
+          "image": "New image",
+          "video": "New video"
+        },
+        "frameHint": "The result appears here",
+        "briefPlaceholder": {
+          "image": "What kind of picture do you want?",
+          "video": "What kind of video do you want?"
+        },
+        "aspectRatio": "Frame",
+        "references": "References",
+        "referencesHint": "Upload media, choose project media, or drag a canvas card here.",
+        "referenceRoleLabel": "Reference role",
+        "removeReference": "Remove {name}",
+        "referenceRole": {
+          "reference_image": "Reference image",
+          "first_frame": "First frame",
+          "last_frame": "Last frame",
+          "reference_video": "Reference video",
+          "reference_audio": "Reference audio",
+          "context": "Reference file"
+        },
+        "submit": "Let AI generate",
+        "cancel": "Cancel",
+        "submitted": "AI is drafting and preparing the generation…",
+        "submittedHint": "Confirm in the chat on the right; the result lands here.",
+        "message": {
+          "imageIntro": "Please generate one image on the canvas. My brief: {brief}",
+          "videoIntro": "Please generate one video on the canvas. My brief: {brief}",
+          "aspectRatio": "Frame: {ratio}",
+          "videoDuration": "Video duration: {seconds} seconds.",
+          "folder": "Save into folder: {path}",
+          "folderRoot": "Save into the project root.",
+          "referencesTitle": "References:",
+          "referenceAttached": "- {role}: {name} (attached)",
+          "referencePath": "- {role}: {name} (project file {path})",
+          "promptOwnership": "Write the complete final prompt from my brief and submit the generation directly; do not ask me to confirm the prompt text.",
+          "parameter": "{field}: {value}"
+        },
+        "advanced": "Advanced",
+        "parameterDefault": "Default",
+        "capabilitiesLoading": "Reading model capabilities…",
+        "modelMissing": {
+          "image": "No image model is configured for this project; pick one in settings first.",
+          "video": "No video model is configured for this project; pick one in settings first."
+        },
+        "parameter": {
+          "resolution": "Resolution",
+          "quality": "Quality",
+          "generateAudio": "Generate audio"
+        },
+        "parameterValue": {
+          "on": "On",
+          "off": "Off"
+        },
+        "capabilitiesFailed": "Could not read model capabilities; check the model and provider settings.",
+        "parameterRequired": "Select an option",
+        "duration": "Duration",
+        "durationSeconds": "{seconds} seconds",
+        "reviewConfiguration": "Use current configuration",
+        "adaptiveFrame": "Frame follows the first image",
+        "pricingLimited": "Only resolutions and reference modes with available quotes are offered.",
+        "validation": {
+          "MODEL_UNAVAILABLE": "Model capabilities are unavailable. Check settings or try again.",
+          "MODEL_CONFIGURATION_UNAVAILABLE": "The fixed model parameters have no available generation plan. Update model settings.",
+          "CONFIGURATION_CHANGED": "Model settings changed. Review the choices and use the current configuration.",
+          "ASPECT_RATIO_REQUIRED": "Select a frame supported by the current model.",
+          "DURATION_REQUIRED": "Select a video duration.",
+          "PARAMETERS_REQUIRED": "Choose valid resolution, quality or audio options in Advanced.",
+          "IMAGE_REFERENCE_ROLE_INVALID": "Image generation accepts reference images and context files.",
+          "IMAGE_MODEL_REFERENCE_LIMIT_EXCEEDED": "Too many reference images for this model. Remove extra images.",
+          "VIDEO_REFERENCE_ROLE_INVALID": "A reference type and role do not match. Remove it and add it again.",
+          "VIDEO_MODEL_INPUT_MODE_UNSUPPORTED": "This reference mode is unavailable for the model or environment. Remove or change the references.",
+          "VIDEO_MODEL_FRAME_INPUT_INVALID": "Frames cannot be mixed with other references. A last frame requires exactly one first frame.",
+          "VIDEO_MODEL_REFERENCE_LIMIT_EXCEEDED": "Too many reference images. Remove extra images.",
+          "VIDEO_MODEL_AUDIO_REFERENCE_LIMIT_EXCEEDED": "Too many reference audio files. Remove extra files.",
+          "VIDEO_MODEL_VIDEO_REFERENCE_LIMIT_EXCEEDED": "Too many reference videos. Remove extra videos.",
+          "VIDEO_MODEL_TOTAL_REFERENCE_LIMIT_EXCEEDED": "The total reference count exceeds the model limit. Remove extra files.",
+          "VIDEO_MODEL_REFERENCE_AUDIO_REQUIRES_VISUAL": "This model requires a reference image or video alongside reference audio.",
+          "VIDEO_MODEL_REFERENCE_AUDIO_DURATION_UNKNOWN": "A reference has no known duration. Re-upload it or choose another file.",
+          "VIDEO_MODEL_REFERENCE_AUDIO_TOO_SHORT": "A reference is too short for the current model.",
+          "VIDEO_MODEL_REFERENCE_AUDIO_TOO_LONG": "A reference is too long for the current model.",
+          "VIDEO_MODEL_REFERENCE_AUDIO_TOTAL_DURATION_TOO_SHORT": "The total reference duration is too short for the current model.",
+          "VIDEO_MODEL_REFERENCE_AUDIO_TOTAL_DURATION_EXCEEDED": "The total reference duration exceeds the model limit. Remove some references.",
+          "VIDEO_MODEL_REFERENCE_VIDEO_DURATION_UNKNOWN": "A reference has no known duration. Re-upload it or choose another file.",
+          "VIDEO_MODEL_REFERENCE_VIDEO_TOO_SHORT": "A reference is too short for the current model.",
+          "VIDEO_MODEL_REFERENCE_VIDEO_TOO_LONG": "A reference is too long for the current model.",
+          "VIDEO_MODEL_REFERENCE_VIDEO_TOTAL_DURATION_TOO_SHORT": "The total reference duration is too short for the current model.",
+          "VIDEO_MODEL_REFERENCE_VIDEO_TOTAL_DURATION_EXCEEDED": "The total reference duration exceeds the model limit. Remove some references."
+        },
+        "referenceLimits": {
+          "image": "This action accepts up to {count} reference images.",
+          "video": "Reference mode: up to {images} images, {audios} audio files and {videos} videos; {total} files total.",
+          "frames": "Frame mode cannot be mixed with other references; a last frame requires a first frame.",
+          "firstFrameOnly": "This model accepts one first-frame image here, not a first/last-frame pair.",
+          "audioDuration": "Reference audio: {minimum}–{maximum} seconds each, up to {total} seconds total.",
+          "videoDuration": "Reference video: {minimum}–{maximum} seconds each, up to {total} seconds total."
+        },
+        "uploadReference": "Upload media",
+        "chooseProjectReference": "Choose project media",
+        "referenceLoading": "Preparing reference…",
+        "referenceRejected": "This material is already selected or is not supported by the current model or reference limit.",
+        "uploadOneReference": "Upload one reference at a time.",
+        "referenceReadFailed": "Unable to load the material. Please try again.",
+        "searchReferences": "Search project media",
+        "noCompatibleReferences": "No available media matches the current model and reference limits.",
+        "loadMoreReferences": "Load more"
+      },
+      "upload": {
+        "title": "Uploads",
+        "failed": "Upload failed",
+        "retryUpload": "Retry upload",
+        "retryMaterialize": "Retry adding",
+        "dismiss": "Dismiss",
+        "stage": {
+          "uploading": "Uploading…",
+          "materializing": "Adding to Canvas…",
+          "ready": "Added to Canvas"
+        }
+      },
+      "status": {
+        "pending": "Pending",
+        "queued": "Queued",
+        "processing": "Processing",
+        "succeeded": "Ready",
+        "failed": "Failed",
+        "canceled": "Canceled"
+      },
+      "nodeFields": {
+        "generationPrompt": "Generation prompt",
+        "generationModel": "Generation model",
+        "generationReferences": "Input resources",
+        "structuredSummary": "Structured content · {count} entries",
+        "structuredSummaryUnknown": "Structured content",
+        "moreItems": "{count} more"
+      },
+      "generation": {
+        "stage": {
+          "submitted": "Submitted",
+          "queued": "Queued",
+          "generating": "Generating",
+          "saving": "Saving"
+        },
+        "progressPercent": "Generating · {percent}%",
+        "waitedMinutes": "Waited {minutes} min"
+      },
+      "details": {
+        "contentSection": "File content",
+        "contentLoading": "Loading content…",
+        "contentLoadFailed": "Content failed to load",
+        "contentRetry": "Retry",
+        "empty": "No generation details",
+        "editor": {
+          "newName": "New resource name",
+          "newNameHint": "Enter a different name for the new version",
+          "differentNameRequired": "The original resource will be kept. Use a different name for this version.",
+          "promptPlaceholder": "Describe what to generate…",
+          "aspectRatio": "Frame",
+          "duration": "Duration (s)",
+          "hint": "“Run again” creates a new card with your edits; this result stays.Drag a card from the canvas here to add it as a reference.",
+          "removeReference": "Remove reference {name}",
+          "restoreReference": "Restore reference {name}",
+          "dropActive": "Release to add this card as a reference.",
+          "removeAddedReference": "Remove this reference",
+          "modelMissing": "No matching model is configured for this project, so it cannot run again."
+        }
+      },
+      "folderNavigation": {
+        "root": "Project files",
+        "back": "Back to parent folder",
+        "searchPlaceholder": "Search project files",
+        "searchResults": "Search results",
+        "noResults": "No matching files",
+        "loadMore": "Load more",
+        "loading": "Loading files…",
+        "loadFailed": "Files could not be loaded",
+        "retry": "Retry",
+        "openFolder": "Open folder",
+        "deleteFolder": "Delete folder {path}",
+        "sectionCount": "{count} items",
+        "directory": "Content",
+        "directoryEmpty": "No project files yet",
+        "jumpToFolder": "Jump to canvas position",
+        "locateFile": "Locate file on canvas"
+      },
+      "nodes": {
+        "resourceCard": {
+          "eyebrow": "Creative Resource · {type}",
+          "mediaType": {
+            "text": "Text",
+            "image": "Image",
+            "audio": "Audio",
+            "video": "Video"
+          }
+        },
+        "folder": {
+          "eyebrow": "Folder"
+        }
+      }
+    }
+  }
+}

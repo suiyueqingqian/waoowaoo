@@ -1,60 +1,22 @@
 import {
   calcImage,
-  calcLipSync,
+  calcMusic,
   calcText,
   calcVideo,
   calcVoice,
-  calcVoiceDesign,
 } from './cost'
-import { BillingOperationError } from './errors'
-import { BUILTIN_PRICING_VERSION } from '@/lib/model-pricing/version'
-import { TASK_TYPE, type TaskType } from '@/lib/task/types'
+import { BUILTIN_PRICING_VERSION } from '@/lib/ai-registry/pricing-resolution'
+import { toChargeableCredits } from './credits'
+import { ensureAiCatalogsRegistered } from '@/lib/ai-exec/catalog-bootstrap'
+import { getTaskDefinition } from '@/lib/task/definition'
+import type { TaskType } from '@/lib/task/types'
 import type { TaskBillingInfo } from './types'
+import { readImageRuntimeGenerationOptions } from '@/lib/image-generation/runtime-options'
+import { musicCompositionPlanDurationMs } from '@/lib/music/composition-plan'
+import { musicScoreGenerationOptionsSchema } from '@/lib/music/score-specification'
+import { parseWorkspaceResourceGenerationTaskPayload } from '@/lib/workspace-resource/generation-contract'
 
 type AnyPayload = Record<string, unknown> | null | undefined
-
-const BILLABLE_TASK_TYPES = new Set<TaskType>([
-  TASK_TYPE.IMAGE_PANEL,
-  TASK_TYPE.IMAGE_CHARACTER,
-  TASK_TYPE.IMAGE_LOCATION,
-  TASK_TYPE.VIDEO_PANEL,
-  TASK_TYPE.LIP_SYNC,
-  TASK_TYPE.VOICE_LINE,
-  TASK_TYPE.VOICE_DESIGN,
-  TASK_TYPE.ASSET_HUB_VOICE_DESIGN,
-  TASK_TYPE.REGENERATE_STORYBOARD_TEXT,
-  TASK_TYPE.INSERT_PANEL,
-  TASK_TYPE.PANEL_VARIANT,
-  TASK_TYPE.MODIFY_ASSET_IMAGE,
-  TASK_TYPE.REGENERATE_GROUP,
-  TASK_TYPE.ASSET_HUB_IMAGE,
-  TASK_TYPE.ASSET_HUB_MODIFY,
-  TASK_TYPE.ANALYZE_NOVEL,
-  TASK_TYPE.STORY_TO_SCRIPT_RUN,
-  TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN,
-  TASK_TYPE.CLIPS_BUILD,
-  TASK_TYPE.SCREENPLAY_CONVERT,
-  TASK_TYPE.VOICE_ANALYZE,
-  TASK_TYPE.ANALYZE_GLOBAL,
-  TASK_TYPE.AI_STORY_EXPAND,
-  TASK_TYPE.AI_MODIFY_APPEARANCE,
-  TASK_TYPE.AI_MODIFY_LOCATION,
-  TASK_TYPE.AI_MODIFY_PROP,
-  TASK_TYPE.AI_MODIFY_SHOT_PROMPT,
-  TASK_TYPE.ANALYZE_SHOT_VARIANTS,
-  TASK_TYPE.AI_CREATE_CHARACTER,
-  TASK_TYPE.AI_CREATE_LOCATION,
-  TASK_TYPE.REFERENCE_TO_CHARACTER,
-  TASK_TYPE.CHARACTER_PROFILE_CONFIRM,
-  TASK_TYPE.CHARACTER_PROFILE_BATCH_CONFIRM,
-  TASK_TYPE.EPISODE_SPLIT_LLM,
-  TASK_TYPE.ASSET_HUB_AI_DESIGN_CHARACTER,
-  TASK_TYPE.ASSET_HUB_AI_DESIGN_LOCATION,
-  TASK_TYPE.ASSET_HUB_AI_MODIFY_CHARACTER,
-  TASK_TYPE.ASSET_HUB_AI_MODIFY_LOCATION,
-  TASK_TYPE.ASSET_HUB_AI_MODIFY_PROP,
-  TASK_TYPE.ASSET_HUB_REFERENCE_TO_CHARACTER,
-])
 
 function toNumber(value: unknown, fallback: number) {
   const n = Number(value)
@@ -88,17 +50,10 @@ function pickFirstString(values: unknown[]): string | null {
 
 function buildTextTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillingInfo | null {
   const inputTokens = Math.max(0, Math.floor(toNumber(payload?.maxInputTokens, 3000)))
-  const outputTokens = Math.max(0, Math.floor(toNumber(payload?.maxOutputTokens, 1200)))
   const model = pickFirstString([payload?.analysisModel, payload?.model])
   if (!model) return null
 
-  // calcText may throw if model has no built-in pricing (user custom pricing resolved later)
-  let maxFrozenCost = 0
-  try {
-    maxFrozenCost = calcText(model, inputTokens, outputTokens)
-  } catch {
-    // Custom-priced or uncatalogued model: actual cost resolved in prepareTaskBilling with user context
-  }
+  const maxFrozenCost = toChargeableCredits(calcText(model, inputTokens, 0))
 
   return {
     billable: true,
@@ -106,12 +61,12 @@ function buildTextTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBilling
     taskType,
     apiType: 'text',
     model,
-    quantity: inputTokens + outputTokens,
+    quantity: inputTokens,
     unit: 'token',
     maxFrozenCost,
     pricingVersion: BUILTIN_PRICING_VERSION,
     action: String(taskType),
-    metadata: { inputTokens, outputTokens },
+    metadata: { inputTokens },
     status: 'quoted',
   }
 }
@@ -120,19 +75,22 @@ function buildImageTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillin
   const model = pickFirstString([payload?.imageModel, payload?.modelId, payload?.model])
   if (!model) return null
   const quantity = Math.max(1, Math.floor(toNumber(payload?.candidateCount ?? payload?.count, 1)))
-  const generationOptions = toRecord(payload?.generationOptions)
-  const resolution = readString(generationOptions.resolution) || readString(payload?.resolution)
-  const metadata = resolution ? { resolution } : undefined
-  let maxFrozenCost = 0
-  try {
-    maxFrozenCost = calcImage(model, quantity, metadata)
-  } catch (error) {
-    if (error instanceof BillingOperationError && error.code === 'BILLING_UNKNOWN_MODEL') {
-      // Uncatalogued model: allow task to proceed without billing estimate
-    } else {
-      throw error
-    }
+  const generationOptions = readImageRuntimeGenerationOptions(payload?.generationOptions)
+  const resolution = generationOptions.resolution
+  const quality = generationOptions.quality
+  const size = generationOptions.size
+  const aspectRatio = generationOptions.aspectRatio
+  const resource = payload?.protocol === 'workspace_resource_generation_v2'
+    ? parseWorkspaceResourceGenerationTaskPayload(payload).resource
+    : undefined
+  const metadata = {
+    ...(resolution ? { resolution } : {}),
+    ...(quality ? { quality } : {}),
+    ...(size ? { size } : {}),
+    ...(aspectRatio ? { aspectRatio } : {}),
+    ...(resource ? { referenceImageCount: resource.imageInputPositions.length } : {}),
   }
+  const maxFrozenCost = toChargeableCredits(calcImage(model, quantity, metadata))
   return {
     billable: true,
     source: 'task',
@@ -144,47 +102,44 @@ function buildImageTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillin
     maxFrozenCost,
     pricingVersion: BUILTIN_PRICING_VERSION,
     action: String(taskType),
-    ...(metadata ? { metadata } : {}),
+    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     status: 'quoted',
   }
 }
 
 function buildVideoTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillingInfo | null {
-  const firstLastFramePayload = toRecord(payload?.firstLastFrame)
-  const generationMode = Object.keys(firstLastFramePayload).length > 0 ? 'firstlastframe' : 'normal'
   const model = pickFirstString([
     payload?.videoModel,
     payload?.modelId,
     payload?.model,
-    firstLastFramePayload.flModel,
   ])
   if (!model) return null
   const generationOptions = toRecord(payload?.generationOptions)
   const resolution = readString(generationOptions.resolution) || readString(payload?.resolution)
-  const duration = readNumber(generationOptions.duration) ?? readNumber(payload?.duration)
+  const duration = readNumber(payload?.durationSeconds)
   const aspectRatio = readString(generationOptions.aspectRatio) || readString(payload?.aspectRatio)
   const generateAudio = typeof generationOptions.generateAudio === 'boolean'
     ? generationOptions.generateAudio
     : undefined
   const quantity = Math.max(1, Math.floor(toNumber(payload?.count, 1)))
+  const resource = payload?.protocol === 'workspace_resource_generation_v2'
+    ? parseWorkspaceResourceGenerationTaskPayload(payload).resource
+    : undefined
   const metadata = {
     ...(resolution ? { resolution } : {}),
     ...(typeof duration === 'number' ? { duration } : {}),
     ...(aspectRatio ? { aspectRatio } : {}),
-    generationMode,
+    generationMode: 'normal',
     ...(typeof generateAudio === 'boolean' ? { generateAudio } : {}),
-    containsVideoInput: false,
+    ...(resource ? {
+      referenceImageCount: resource.imageInputPositions.length,
+      containsVideoInput: resource.videoInputPositions.length > 0,
+      containsFirstFrame: resource.inputs.some((input) => (
+        resource.imageInputPositions.includes(input.position) && input.role === 'first_frame'
+      )),
+    } : {}),
   }
-  let maxFrozenCost = 0
-  try {
-    maxFrozenCost = calcVideo(model, resolution || '720p', quantity, metadata)
-  } catch (error) {
-    if (error instanceof BillingOperationError && error.code === 'BILLING_UNKNOWN_MODEL') {
-      // Uncatalogued model: allow task to proceed without billing estimate
-    } else {
-      throw error
-    }
-  }
+  const maxFrozenCost = toChargeableCredits(calcVideo(model, resolution || '720p', quantity, metadata))
   return {
     billable: true,
     source: 'task',
@@ -201,110 +156,82 @@ function buildVideoTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillin
   }
 }
 
-function buildVoiceTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillingInfo {
-  const maxSeconds = Math.max(1, Math.floor(toNumber(payload?.maxSeconds, 5)))
+function buildMusicTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillingInfo | null {
+  const model = pickFirstString([payload?.musicModel, payload?.modelId, payload?.model])
+  if (!model) return null
+  const specification = musicScoreGenerationOptionsSchema.safeParse(payload?.generationOptions)
+  if (!specification.success) return null
+  const durationSeconds = musicCompositionPlanDurationMs(
+    specification.data.compositionPlan,
+  ) / 1000
+  const quantity = Math.max(1, Math.floor(toNumber(payload?.count, 1)))
+  const metadata = {
+    durationSeconds,
+    generationMode: 'composition_plan',
+    outputFormat: specification.data.outputFormat,
+  }
+  return {
+    billable: true,
+    source: 'task',
+    taskType,
+    apiType: 'music',
+    model,
+    quantity,
+    unit: 'call',
+    maxFrozenCost: toChargeableCredits(calcMusic(model, quantity, metadata)),
+    pricingVersion: BUILTIN_PRICING_VERSION,
+    action: String(taskType),
+    metadata,
+    status: 'quoted',
+  }
+}
+
+function buildVoiceTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillingInfo | null {
+  const model = pickFirstString([payload?.voiceModel, payload?.modelId, payload?.model])
+  const previewText = readString(payload?.previewText)
+  if (!model || !previewText) return null
+  const characters = Math.max(1, Array.from(previewText).length)
+  const language = readString(payload?.language)
   return {
     billable: true,
     source: 'task',
     taskType,
     apiType: 'voice',
-    model: 'index-tts2',
-    quantity: maxSeconds,
-    unit: 'second',
-    maxFrozenCost: calcVoice(maxSeconds),
+    model,
+    quantity: characters,
+    unit: 'character',
+    maxFrozenCost: toChargeableCredits(calcVoice(model, characters)),
     pricingVersion: BUILTIN_PRICING_VERSION,
     action: String(taskType),
-    metadata: { maxSeconds },
-    status: 'quoted',
-  }
-}
-
-function buildVoiceDesignTaskInfo(taskType: TaskType): TaskBillingInfo {
-  return {
-    billable: true,
-    source: 'task',
-    taskType,
-    apiType: 'voice-design',
-    model: 'bailian-voice-design',
-    quantity: 1,
-    unit: 'call',
-    maxFrozenCost: calcVoiceDesign(),
-    pricingVersion: BUILTIN_PRICING_VERSION,
-    action: String(taskType),
+    metadata: {
+      characters,
+      ...(language ? { language } : {}),
+    },
     status: 'quoted',
   }
 }
 
 export function isBillableTaskType(taskType: TaskType) {
-  return BILLABLE_TASK_TYPES.has(taskType)
+  return getTaskDefinition(taskType).billingPolicy !== 'none'
 }
 
 export function buildDefaultTaskBillingInfo(taskType: TaskType, payload: AnyPayload): TaskBillingInfo | null {
-  if (!isBillableTaskType(taskType)) return null
-
-  switch (taskType) {
-    case TASK_TYPE.IMAGE_PANEL:
-    case TASK_TYPE.IMAGE_CHARACTER:
-    case TASK_TYPE.IMAGE_LOCATION:
-    case TASK_TYPE.MODIFY_ASSET_IMAGE:
-    case TASK_TYPE.REGENERATE_GROUP:
-    case TASK_TYPE.ASSET_HUB_IMAGE:
-    case TASK_TYPE.ASSET_HUB_MODIFY:
-      return buildImageTaskInfo(taskType, payload)
-    case TASK_TYPE.VIDEO_PANEL:
-      return buildVideoTaskInfo(taskType, payload)
-    case TASK_TYPE.LIP_SYNC: {
-      const lipSyncModel = pickFirstString([payload?.lipSyncModel]) || 'kling'
-      return {
-        billable: true,
-        source: 'task',
-        taskType,
-        apiType: 'lip-sync',
-        model: lipSyncModel,
-        quantity: 1,
-        unit: 'call',
-        maxFrozenCost: calcLipSync(lipSyncModel),
-        pricingVersion: BUILTIN_PRICING_VERSION,
-        action: String(taskType),
-        status: 'quoted',
-      }
-    }
-    case TASK_TYPE.VOICE_LINE:
-      return buildVoiceTaskInfo(taskType, payload)
-    case TASK_TYPE.VOICE_DESIGN:
-    case TASK_TYPE.ASSET_HUB_VOICE_DESIGN:
-      return buildVoiceDesignTaskInfo(taskType)
-    case TASK_TYPE.REGENERATE_STORYBOARD_TEXT:
-    case TASK_TYPE.INSERT_PANEL:
-    case TASK_TYPE.ANALYZE_NOVEL:
-    case TASK_TYPE.STORY_TO_SCRIPT_RUN:
-    case TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN:
-    case TASK_TYPE.CLIPS_BUILD:
-    case TASK_TYPE.SCREENPLAY_CONVERT:
-    case TASK_TYPE.VOICE_ANALYZE:
-    case TASK_TYPE.ANALYZE_GLOBAL:
-    case TASK_TYPE.AI_STORY_EXPAND:
-    case TASK_TYPE.AI_MODIFY_APPEARANCE:
-    case TASK_TYPE.AI_MODIFY_LOCATION:
-    case TASK_TYPE.AI_MODIFY_PROP:
-    case TASK_TYPE.AI_MODIFY_SHOT_PROMPT:
-    case TASK_TYPE.ANALYZE_SHOT_VARIANTS:
-    case TASK_TYPE.AI_CREATE_CHARACTER:
-    case TASK_TYPE.AI_CREATE_LOCATION:
-    case TASK_TYPE.REFERENCE_TO_CHARACTER:
-    case TASK_TYPE.CHARACTER_PROFILE_CONFIRM:
-    case TASK_TYPE.CHARACTER_PROFILE_BATCH_CONFIRM:
-    case TASK_TYPE.EPISODE_SPLIT_LLM:
-    case TASK_TYPE.ASSET_HUB_AI_DESIGN_CHARACTER:
-    case TASK_TYPE.ASSET_HUB_AI_DESIGN_LOCATION:
-    case TASK_TYPE.ASSET_HUB_AI_MODIFY_CHARACTER:
-    case TASK_TYPE.ASSET_HUB_AI_MODIFY_LOCATION:
-    case TASK_TYPE.ASSET_HUB_AI_MODIFY_PROP:
-    case TASK_TYPE.ASSET_HUB_REFERENCE_TO_CHARACTER:
-      return buildTextTaskInfo(taskType, payload)
-    case TASK_TYPE.PANEL_VARIANT:
-      return buildImageTaskInfo(taskType, payload)
-    default:
+  ensureAiCatalogsRegistered()
+  const billingPolicy = getTaskDefinition(taskType).billingPolicy
+  switch (billingPolicy) {
+    case 'none':
       return null
+    case 'image':
+      return buildImageTaskInfo(taskType, payload)
+    case 'video':
+      return buildVideoTaskInfo(taskType, payload)
+    case 'music':
+      return buildMusicTaskInfo(taskType, payload)
+    case 'voice':
+      return buildVoiceTaskInfo(taskType, payload)
+    case 'text':
+      return buildTextTaskInfo(taskType, payload)
   }
+  const exhaustive: never = billingPolicy
+  throw new Error(`TASK_BILLING_POLICY_UNSUPPORTED:${String(exhaustive)}`)
 }

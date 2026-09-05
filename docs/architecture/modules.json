@@ -1,0 +1,369 @@
+{
+  "modules": [
+    {
+      "id": "codex-runtime-rollout",
+      "document": "docs/architecture/modules/codex-runtime-rollout.md",
+      "title": "Codex Creative Runtime",
+      "sourcePaths": [
+        "src/lib/codex-runtime",
+        "src/lib/codex-model-gateway",
+        "src/lib/assistant-runtime",
+        "src/lib/project-production-context.ts",
+        "src/lib/wao-mcp",
+        "src/app/api/internal/codex-runtime",
+        "src/app/api/projects/[projectId]/assistant",
+        "scripts/codex-runtime-smoke.ts",
+        "scripts/codex-production-tools-smoke.ts",
+        "scripts/lib/production-context-fixture.ts",
+        "Dockerfile.codex-runtime",
+        "docker/codex-runtime",
+        ".env.example",
+        "ee/.env.example",
+        "prisma/migrations/20260802220000_codex_runtime_cutover"
+      ]
+    },
+    {
+      "id": "durable-execution",
+      "document": "docs/architecture/modules/durable-execution.md",
+      "title": "Temporal 持久执行边界",
+      "sourcePaths": [
+        "src/lib/temporal",
+        "src/lib/agent-turn",
+        "src/lib/task/provider-invocation.ts",
+        "src/lib/task/execution-checkpoint.ts",
+        "src/lib/task/terminal",
+        "src/lib/operations/durable-dispatch.ts",
+        "src/lib/operations/durable-execution.ts",
+        "src/lib/assistant-runtime/task-follow-up-http.ts",
+        "src/app/api/internal/codex-runtime/follow-up",
+        "scripts/temporal",
+        "docker-compose.dev.yml",
+        "tests/integration/temporal"
+      ]
+    },
+    {
+      "id": "billing-approval",
+      "document": "docs/architecture/modules/billing-approval.md",
+      "title": "计费与审批",
+      "sourcePaths": [
+        "src/lib/billing",
+        "ee/src/billing",
+        "ee/src/payments",
+        "ee/src/paid-beta",
+        "ee/src/components",
+        "src/app/api/payments",
+        "src/app/api/paid-beta",
+        "prisma/schema.prisma",
+        "prisma/migrations/20260805160000_paid_beta_and_announcements",
+        "src/app/api/user/transactions",
+        "src/app/api/operation-approval-grants",
+        "src/app/api/projects/[projectId]/operations",
+        "src/lib/operations",
+        "src/lib/task/approved-plan-submitter.ts",
+        "src/lib/task/transactional-create.ts",
+        "src/lib/task/submitter.ts",
+        "src/lib/ai-registry/pricing-catalog.ts",
+        "src/lib/ai-registry/pricing-retail.ts",
+        "src/lib/ai-registry/pricing-coverage.ts",
+        "src/lib/ai-providers/shared/seedance-pricing.ts",
+        "scripts/check-pricing-catalog.ts",
+        "tests/integration/billing",
+        "ee/tests/integration/billing"
+      ]
+    },
+    {
+      "id": "canvas-node",
+      "document": "docs/architecture/modules/canvas-node.md",
+      "title": "Canvas 文件夹投影与卡片",
+      "sourcePaths": [
+        "src/features/project-workspace",
+        "src/lib/project-canvas",
+        "src/lib/query",
+        "src/app/[locale]/workspace/[projectId]",
+        "src/app/api/projects/[projectId]/canvas-layout",
+        "messages/en/workspace.json",
+        "messages/zh/workspace.json",
+        "messages/en/project-workflow.json",
+        "messages/zh/project-workflow.json",
+        "src/styles/animations.css",
+        "tests/helpers/workspace-canvas.ts"
+      ]
+    },
+    {
+      "id": "workspace-resource",
+      "document": "docs/architecture/modules/workspace-resource.md",
+      "title": "Workspace Resource 持久树与直接生产",
+      "sourcePaths": [
+        "src/lib/workspace-resource",
+        "src/lib/project-production-context.ts",
+        "src/lib/adapters/operation-error-normalizer.ts",
+        "src/lib/errors/projection.ts",
+        "src/lib/operations/domains/workspace-resource",
+        "src/lib/operations/api-only/media-upload-api-ops.ts",
+        "src/app/api/projects/[projectId]/resources",
+        "src/app/api/projects/[projectId]/upload-media",
+        "src/app/api/projects/[projectId]/uploaded-media",
+        "src/lib/task/execution/handlers/workspace-resource-audio.ts",
+        "src/lib/task/execution/handlers/workspace-resource-image.ts",
+        "src/lib/task/execution/handlers/workspace-resource-video.ts",
+        "src/lib/task/execution/handlers/workspace-resource-video-merge.ts",
+        "src/lib/task/execution/handlers/workspace-resource-voice.ts",
+        "src/lib/voice/voice-resource-service.ts",
+        "src/lib/video-compose",
+        "src/types/project.ts",
+        "scripts/media-mapping.ts",
+        "scripts/media-restore-dry-run.ts",
+        "scripts/media-safety-backup.ts",
+        "src/lib/home",
+        "prisma/schema.prisma",
+        "prisma/migrations"
+      ]
+    },
+    {
+      "id": "audio-production",
+      "document": "docs/architecture/modules/audio-production.md",
+      "title": "独立音乐、音色与混音",
+      "sourcePaths": [
+        "src/lib/creative-skills/skills/music-direction",
+        "src/lib/ai-providers/fal/music.ts",
+        "src/lib/ai-providers/fal/voice.ts",
+        "src/lib/ai-providers/google/music.ts",
+        "src/lib/ai-providers/elevenlabs",
+        "src/lib/music",
+        "src/lib/task/execution/artifacts/audio.ts",
+        "src/lib/task/execution/handlers/workspace-resource-audio.ts",
+        "src/lib/task/execution/handlers/workspace-resource-voice.ts",
+        "src/lib/voice/voice-resource-service.ts",
+        "src/lib/operations/domains/voice"
+      ]
+    },
+    {
+      "id": "async-task-lifecycle",
+      "document": "docs/architecture/modules/async-task-lifecycle.md",
+      "title": "Temporal 异步 Task 生命周期",
+      "sourcePaths": [
+        "src/lib/task",
+        "src/lib/temporal/activities/task.ts",
+        "src/lib/temporal/workflows/task.ts",
+        "src/lib/temporal/workflows/user-task-scheduler.ts",
+        "src/app/api/tasks",
+        "tests/integration/task"
+      ]
+    },
+    {
+      "id": "assistant-run-lifecycle",
+      "document": "docs/architecture/modules/assistant-run-lifecycle.md",
+      "title": "Assistant Thread、Turn 与交互生命周期",
+      "sourcePaths": [
+        "src/lib/assistant-runtime",
+        "src/lib/codex-runtime/runtime-session-manager.ts",
+        "src/lib/agent-turn",
+        "src/lib/project-agent",
+        "src/lib/sse",
+        "src/lib/adapters/api/execute-project-agent-operation.ts",
+        "src/lib/adapters/operation-error-normalizer.ts",
+        "src/app/api/projects/[projectId]/assistant",
+        "src/app/api/sse",
+        "src/features/project-workspace/components/workspace-assistant",
+        "messages/en/assistantAgent.json",
+        "messages/zh/assistantAgent.json",
+        "messages/en/progress.json",
+        "messages/zh/progress.json"
+      ]
+    },
+    {
+      "id": "creative-skills",
+      "document": "docs/architecture/modules/creative-skills.md",
+      "title": "Creative Skills 与主 Agent 专业输出",
+      "sourcePaths": [
+        "src/lib/creative-skills",
+        "src/lib/project-production-context.ts"
+      ]
+    },
+    {
+      "id": "provider-gateway",
+      "document": "docs/architecture/modules/provider-gateway.md",
+      "title": "Provider Gateway",
+      "sourcePaths": [
+        "src/lib/ai-exec",
+        "src/lib/ai-providers",
+        "ee/src/ai-providers",
+        "src/lib/ai-registry",
+        "src/lib/config-service.ts",
+        "src/lib/model-access",
+        "src/lib/operations/domains/config/user-models-ops.ts",
+        "src/lib/operations/domains/config/user-preference-ops.ts",
+        "src/lib/platform-models",
+        "src/lib/platform-runtime",
+        ".env.example",
+        "ee/.env.example",
+        "src/lib/user-api",
+        "src/lib/query/hooks/useUserModels.ts",
+        "src/lib/operations/production-tool-schema.ts",
+        "src/lib/llm-observe",
+        "src/lib/image-cache.ts",
+        "src/lib/media",
+        "scripts/check-outbound-image-runtime-sample.ts",
+        "scripts/check-outbound-image-success-rate.ts"
+      ]
+    },
+    {
+      "id": "production-operations",
+      "document": "docs/architecture/modules/production-operations.md",
+      "title": "生产发布与主机治理",
+      "sourcePaths": [
+        ".github/workflows/verify.yml",
+        "ee/scripts/production",
+        "scripts/reconcile-assistant-runtime-rollout.ts",
+        "ee/ops/systemd",
+        "scripts/temporal/worker-rollout.sh",
+        "src/lib/codex-runtime/docker-runtime-container.ts"
+      ]
+    },
+    {
+      "id": "ai-prompt-output-contract",
+      "document": "docs/architecture/modules/ai-prompt-output-contract.md",
+      "title": "Agent 指令、Skill 与输出契约",
+      "sourcePaths": [
+        "src/lib/ai-prompts/templates/project-agent/system/project-agent-system.txt",
+        "src/lib/assistant-runtime",
+        "src/lib/codex-runtime/runtime-adapter.ts",
+        "src/lib/codex-runtime/app-server-client.ts",
+        "src/lib/creative-skills",
+        "src/lib/project-production-context.ts",
+        "src/lib/wao-mcp/contracts.ts",
+        "src/lib/operations/project-agent.ts",
+        "src/lib/operations/production-tool-schema.ts",
+        "messages/en/errors.json",
+        "messages/zh/errors.json"
+      ]
+    },
+    {
+      "id": "web-search",
+      "document": "docs/architecture/modules/web-search.md",
+      "title": "托管联网研究",
+      "sourcePaths": [
+        "src/lib/web-search",
+        "src/lib/codex-model-gateway/standalone-search.ts",
+        "src/lib/ai-providers/openai",
+        "src/lib/ai-exec/hosted-web-search.ts",
+        "src/lib/wao-mcp",
+        "src/lib/media/outbound-fetch.ts",
+        "src/features/project-workspace/components/workspace-assistant"
+      ]
+    },
+    {
+      "id": "failure-governance",
+      "document": "docs/architecture/modules/failure-governance.md",
+      "title": "原生失败证据与重放裁决",
+      "sourcePaths": [
+        "src/lib/errors",
+        "src/lib/retry",
+        "src/lib/external-operation",
+        "src/lib/storage",
+        "src/lib/api-errors.ts",
+        "src/lib/ai-providers/failure.ts",
+        "src/lib/codex-model-gateway/provider-attempt.ts",
+        "src/lib/codex-model-gateway/provider-response-observer.ts",
+        "src/lib/assistant-runtime/persistence.ts",
+        "src/lib/adapters/operation-error-normalizer.ts",
+        "src/lib/media-process.ts",
+        "scripts/diagnose-project.ts",
+        "scripts/task-error-stats.ts",
+        "scripts/check-failure-governance.ts",
+        "prisma/migrations/20260807130000_failure_record_v2",
+        "prisma/migrations/20260811120000_add_project_agent_provider_attempt"
+      ]
+    },
+    {
+      "id": "product-shell",
+      "document": "docs/architecture/modules/product-shell.md",
+      "title": "产品外壳、身份与本地化",
+      "sourcePaths": [
+        "src/app",
+        "src/components",
+        "src/lib/api-auth.ts",
+        "src/lib/auth.ts",
+        "src/lib/auth",
+        "src/lib/deployment",
+        "src/lib/edition",
+        "src/editions/self-hosted",
+        "ee/src/edition",
+        "ee/src/auth",
+        "ee/src/pages",
+        "ee/src/public-site",
+        "ee/messages",
+        "scripts/edition",
+        "ee/package.json",
+        "ee/package-lock.json",
+        "src/lib/home",
+        "ee/src/announcements",
+        "ee/src/public-beta",
+        "src/lib/profile",
+        "src/lib/projects",
+        "src/i18n.ts",
+        "src/i18n",
+        "src/proxy.ts",
+        "scripts/check-next-build-artifacts.mjs",
+        "ee/src/components/InAppAnnouncementHost.tsx",
+        "src/app/api/announcements",
+        "src/app/api/public-beta",
+        "prisma/schema.prisma",
+        "prisma/migrations/20260805160000_paid_beta_and_announcements",
+        "prisma/migrations/20260806200000_add_public_beta_waitlist",
+        "messages",
+        "package.json",
+        "package-lock.json",
+        "Dockerfile",
+        "docker-entrypoint.sh",
+        "docker-compose.yml",
+        "docker-compose.self-hosted.yml",
+        "docker/caddy",
+        "next.config.ts"
+      ]
+    },
+    {
+      "id": "asset-scope-ownership",
+      "document": "docs/architecture/modules/asset-scope-ownership.md",
+      "title": "Asset Hub Scope 与媒体所有权",
+      "sourcePaths": [
+        "src/lib/assets",
+        "src/lib/asset-generation",
+        "src/app/api/assets",
+        "src/app/api/asset-hub",
+        "src/app/[locale]/workspace/asset-hub",
+        "src/components/shared/assets",
+        "src/lib/media/storage-access-policy.ts",
+        "src/lib/media/outbound-owned-media.ts",
+        "src/lib/media/outbound-fetch.ts"
+      ]
+    },
+    {
+      "id": "logging-observability",
+      "document": "docs/architecture/modules/logging-observability.md",
+      "title": "日志与可观测性",
+      "sourcePaths": [
+        "src/lib/logging",
+        "src/lib/llm-observe",
+        "src/lib/errors/client-reporter.ts",
+        "src/app/api/client-log",
+        "src/app/api/admin/download-logs"
+      ]
+    },
+    {
+      "id": "test-governance",
+      "document": "docs/architecture/modules/test-governance.md",
+      "title": "测试治理",
+      "sourcePaths": [
+        "tests",
+        "ee/tests",
+        "scripts/architecture-impact.mjs",
+        "scripts/architecture-impact-lib.mjs",
+        "scripts/test-verification",
+        "vitest.config.ts",
+        "tests/browser-security/playwright.config.ts",
+        "tsconfig.runtime-scripts.json"
+      ]
+    }
+  ]
+}

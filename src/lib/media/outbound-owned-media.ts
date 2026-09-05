@@ -1,0 +1,195 @@
+import { describeUnknownError } from '@/lib/errors/normalize'
+import { resolveMediaMimeType } from '@/lib/media/media-mime'
+import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
+import { authorizeStorageObjectReadForUser } from '@/lib/media/storage-access-policy'
+import { DEFAULT_SIGNED_URL_EXPIRES_SECONDS } from '@/lib/storage/utils'
+import { getObjectBuffer, getObjectMetadata, getSignedObjectUrl } from '@/lib/storage'
+import type { ProviderMediaInputTransport } from '@/lib/deployment/config'
+
+function storageErrorSummary(error: unknown): string {
+  if (error instanceof Error) return `${error.name}: ${error.message}`
+  return describeUnknownError(error)
+}
+
+export type OwnedMediaOutboundErrorCode =
+  | 'OWNED_MEDIA_UNSUPPORTED_INPUT'
+  | 'OWNED_MEDIA_STORAGE_METADATA_FAILED'
+  | 'OWNED_MEDIA_SIZE_UNKNOWN'
+  | 'OWNED_MEDIA_EMPTY'
+  | 'OWNED_MEDIA_SIZE_EXCEEDED'
+  | 'OWNED_MEDIA_FORMAT_UNSUPPORTED'
+  | 'OWNED_MEDIA_BODY_READ_FAILED'
+  | 'OWNED_MEDIA_BODY_SIZE_MISMATCH'
+  | 'OWNED_MEDIA_SIGNED_URL_INVALID'
+
+export class OwnedMediaOutboundError extends Error {
+  readonly code: OwnedMediaOutboundErrorCode
+  readonly input: string
+  override readonly cause?: unknown
+
+  constructor(input: {
+    code: OwnedMediaOutboundErrorCode
+    mediaInput: string
+    message: string
+    cause?: unknown
+  }) {
+    super(input.message, { cause: input.cause })
+    this.name = 'OwnedMediaOutboundError'
+    this.code = input.code
+    this.input = input.mediaInput
+    this.cause = input.cause
+  }
+}
+
+export type OwnedMediaForGeneration = {
+  readonly storageKey: string
+  readonly contentType: string
+  readonly sizeBytes: number
+  readonly durationMs: number | null
+}
+
+/**
+ * The only background-task projection path for private provider-bound media.
+ * It resolves canonical storage identity, applies the same relation owner
+ * policy as authenticated media routes and validates object metadata. Provider
+ * transport projection is a separate final step so durable request identity
+ * remains the canonical storage key rather than an expiring URL or Data URL.
+ */
+export async function resolveOwnedMediaForGeneration(
+  input: string,
+  userId: string,
+  options: {
+    readonly maxBytes: number
+    readonly label: string
+    readonly supportedMimeTypes: ReadonlySet<string>
+    readonly normalizeMimeType?: (mimeType: string) => string
+  },
+): Promise<OwnedMediaForGeneration> {
+  const normalizedInput = input.trim()
+  const storageKey = await resolveStorageKeyFromMediaValue(normalizedInput)
+  if (!storageKey) {
+    throw new OwnedMediaOutboundError({
+      code: 'OWNED_MEDIA_UNSUPPORTED_INPUT',
+      mediaInput: normalizedInput,
+      message: `owned media input does not resolve to a storage key: ${normalizedInput}`,
+    })
+  }
+
+  const media = await authorizeStorageObjectReadForUser(storageKey, userId)
+  let objectMetadata
+  try {
+    objectMetadata = await getObjectMetadata(media.storageKey)
+  } catch (error) {
+    throw new OwnedMediaOutboundError({
+      code: 'OWNED_MEDIA_STORAGE_METADATA_FAILED',
+      mediaInput: normalizedInput,
+      message: `${options.label} metadata read failed for ${media.storageKey}: ${storageErrorSummary(error)}`,
+      cause: error,
+    })
+  }
+
+  const storedSize = typeof media.sizeBytes === 'bigint'
+    ? Number(media.sizeBytes)
+    : media.sizeBytes
+  const sizeBytes = objectMetadata.contentLength ?? storedSize
+  if (typeof sizeBytes !== 'number' || !Number.isSafeInteger(sizeBytes) || sizeBytes < 0) {
+    throw new OwnedMediaOutboundError({
+      code: 'OWNED_MEDIA_SIZE_UNKNOWN',
+      mediaInput: normalizedInput,
+      message: `${options.label} size is unavailable: ${media.storageKey}`,
+    })
+  }
+  if (sizeBytes === 0) {
+    throw new OwnedMediaOutboundError({
+      code: 'OWNED_MEDIA_EMPTY',
+      mediaInput: normalizedInput,
+      message: `${options.label} is empty: ${media.storageKey}`,
+    })
+  }
+  if (sizeBytes > options.maxBytes) {
+    throw new OwnedMediaOutboundError({
+      code: 'OWNED_MEDIA_SIZE_EXCEEDED',
+      mediaInput: normalizedInput,
+      message: `${options.label} exceeds ${String(options.maxBytes)} bytes: ${media.storageKey}`,
+    })
+  }
+
+  const storageContentType = resolveMediaMimeType(
+    media.storageKey,
+    objectMetadata.contentType,
+    new Uint8Array(),
+  )
+  const detectedContentType = storageContentType === 'application/octet-stream' && media.mimeType
+    ? resolveMediaMimeType(media.storageKey, media.mimeType, new Uint8Array())
+    : storageContentType
+  const contentType = options.normalizeMimeType
+    ? options.normalizeMimeType(detectedContentType)
+    : detectedContentType
+  if (!options.supportedMimeTypes.has(contentType)) {
+    throw new OwnedMediaOutboundError({
+      code: 'OWNED_MEDIA_FORMAT_UNSUPPORTED',
+      mediaInput: normalizedInput,
+      message: `${options.label} format is unsupported: ${contentType}`,
+    })
+  }
+
+  return {
+    storageKey: media.storageKey,
+    contentType,
+    sizeBytes,
+    durationMs: media.durationMs,
+  }
+}
+
+export async function projectOwnedMediaForGeneration(
+  media: OwnedMediaForGeneration,
+  input: {
+    readonly mediaInput: string
+    readonly label: string
+    readonly transport: ProviderMediaInputTransport
+  },
+): Promise<string> {
+  if (input.transport === 'inline-data-url') {
+    let body: Buffer
+    try {
+      body = await getObjectBuffer(media.storageKey)
+    } catch (error) {
+      throw new OwnedMediaOutboundError({
+        code: 'OWNED_MEDIA_BODY_READ_FAILED',
+        mediaInput: input.mediaInput,
+        message: `${input.label} body read failed for ${media.storageKey}: ${storageErrorSummary(error)}`,
+        cause: error,
+      })
+    }
+    if (body.length !== media.sizeBytes) {
+      throw new OwnedMediaOutboundError({
+        code: 'OWNED_MEDIA_BODY_SIZE_MISMATCH',
+        mediaInput: input.mediaInput,
+        message: `${input.label} body size changed while reading ${media.storageKey}`,
+      })
+    }
+    return `data:${media.contentType};base64,${body.toString('base64')}`
+  }
+
+  const url = await getSignedObjectUrl(media.storageKey, {
+    expiresInSeconds: DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
+  })
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(url)
+  } catch {
+    throw new OwnedMediaOutboundError({
+      code: 'OWNED_MEDIA_SIGNED_URL_INVALID',
+      mediaInput: input.mediaInput,
+      message: `${input.label} signed URL is invalid`,
+    })
+  }
+  if (parsedUrl.protocol !== 'https:') {
+    throw new OwnedMediaOutboundError({
+      code: 'OWNED_MEDIA_SIGNED_URL_INVALID',
+      mediaInput: input.mediaInput,
+      message: `${input.label} signed URL must use HTTPS`,
+    })
+  }
+  return parsedUrl.toString()
+}

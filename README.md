@@ -1,152 +1,113 @@
-
-
 <p align="center">
   <a href="https://trendshift.io/repositories/22585?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-22585" target="_blank" rel="noopener noreferrer">
     <img src="https://trendshift.io/api/badge/trendshift/repositories/22585/daily" alt="waooAI%2Fwaoowaoo | Trendshift" width="250" height="55"/>
   </a>
 </p>
 
-<p align="center">
-  一款基于 AI 技术的短剧/漫画视频制作工具，支持从小说文本自动生成分镜、角色、场景，并制作成完整视频。
-</p>
+<p align="center">An AI creative workspace for images and videos: develop ideas with the right-hand Assistant, upload references, and organize and refine your work on a canvas.</p>
 
-<p align="center">
-  <a href="README_en.md">English</a> · <a href="https://www.waoowaoo.com/">加入内测候补</a> · <a href="https://github.com/saturndec/waoowaoo/issues">反馈问题</a>
-</p>
+<p align="center"><a href="https://www.waoowaoo.com/">Join Waitlist</a> · <a href="https://github.com/waooAI/waoowaoo/issues">Report Bug</a></p>
+
+[English](README.md) · [简体中文](README_zh.md) · [日本語](README_ja.md) · [한국어](README_ko.md)
 
 > [!IMPORTANT]
-> ⚠️ **测试版声明**：本项目目前处于测试初期阶段，由于暂时只有我一个人开发，存在部分 bug 和不完善之处。我们正在快速迭代更新中，**欢迎进群反馈问题和需求，及时关注项目更新！目前更新会非常频繁，后续会增加大量新功能以及优化效果，我们的目标是成为行业最强AI工具！**
+> **Preview release:** we are iterating rapidly, and some bugs and rough edges remain. Join the community to share feedback and follow updates.
+
+WeChat / community
 
 <img src="https://github.com/user-attachments/assets/0f4ff766-f059-4554-9193-caf34b081c7b" width="30%">
 
 ---
-## ✨ 功能特性
 
-- 🎬 **AI 剧本分析** — 自动解析小说，提取角色、场景、剧情
-- 🎨 **角色 & 场景生成** — AI 生成一致性人物和场景图片
-- 📽️ **分镜视频制作** — 自动生成分镜头并合成视频
-- 🎙️ **AI 配音** — 多角色语音合成
-- 🌐 **多语言支持** — 中文 / 英文界面，右上角一键切换
+## ✨ Features
+
+- Work with the right-hand Assistant to develop a brief and create assets in an ongoing project.
+- Upload reference material, organize files, and inspect generated images and videos on the canvas.
+- Generate with model-aware aspect ratios, durations, resolutions, and reference roles.
+- Use supported first-frame, first/last-frame, or reference-image modes; availability depends on the selected model.
+- Refine an existing result into a new version while retaining the original.
+
+This preview exposes **OpenRouter** configuration. Available models include GPT Image 2, Nano Banana variants, Seedance variants, and MiniMax H3 / H3 Max. Availability and charges depend on the provider. H3 Max currently accepts a single first frame in this application, not a first/last-frame pair. Music and voiceover controls are not included in this preview.
+
+The application UI currently supports Chinese and English. Japanese and Korean are README translations.
 
 ---
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-**前提条件**：安装 [Docker Desktop](https://docs.docker.com/get-docker/)
+Copy the following into a local coding assistant with terminal access. It will inspect your machine, install the required dependencies, and configure Docker for you. You may need to approve an operating-system installer or start Docker Desktop yourself.
 
-### 方式一：拉取预构建镜像（最简单）
-
-无需克隆仓库，下载即用：
-
-```bash
-# 下载 docker-compose.yml
-curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
-
-# 启动所有服务
-docker compose up -d
+```text
+Install the self-hosted preview of https://github.com/waooAI/waoowaoo on my computer.
+Read the repository README, docs/INSTALL.md, and the selected GitHub Release first.
+Use a published preview release and its prebuilt Docker images. Pin both the
+application and the Codex runtime to the release's immutable image digests.
+Check my OS, CPU architecture, Docker Engine/Desktop, Compose v2, Git, and flock;
+install missing dependencies using the appropriate OS tools, with approval where required.
+Use a new installation directory and preserve all existing containers, files, and data.
+Generate unique local secrets and configure .env without printing or uploading secrets.
+Follow the existing Worker bootstrap procedure; do not invent a second startup path.
+Include docker/caddy/Caddyfile from the same release. Use the default Compose HTTPS entry:
+SELF_HOSTED_HOST=localhost, SELF_HOSTED_HTTPS_PORT=1443; APP_HOST_PORT=13000 only redirects HTTP.
+The overlay derives NEXTAUTH_URL; preserve Caddy's /data and /config named volumes.
+Export only root.crt, explain its trust implications, and obtain my explicit approval
+before helping me trust it on the browser's host OS (Windows trust is separate from WSL).
+Never export root.key or bypass TLS checks. Verify https://localhost:1443 has no certificate
+warning and the browser actually uses h2, including event streams across multiple tabs.
+SSE tab concurrency is not the AI task concurrency limit.
+Verify container health and that the application opens, then tell me the local URL.
+Guide me to enter my OpenRouter API key in the application; do not request it in chat.
+Do not start paid AI generations without my approval. If the release lacks a required
+image or my platform is unsupported, explain the blocker instead of claiming success.
 ```
 
-> ⚠️ 当前为测试版，版本间数据库不兼容。升级请先清除旧数据：
+The release Compose setup starts Caddy automatically. After approving local certificate trust, open **https://localhost:1443**; port `13000` only redirects HTTP. Source development with `npm run dev` remains at `http://localhost:3001`.
 
-```bash
-docker compose down -v
-docker rmi ghcr.io/saturndec/waoowaoo:latest
-curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
-docker compose up -d
-```
-
-> 启动后请**清空浏览器缓存**并重新登录，避免旧版本缓存导致异常。
-
-### 方式二：克隆仓库 + Docker 构建（完全控制）
-
-```bash
-git clone https://github.com/saturndec/waoowaoo.git
-cd waoowaoo
-docker compose up -d
-```
-
-更新版本：
-```bash
-git pull
-docker compose down && docker compose up -d --build
-```
-
-### 方式三：本地开发模式（开发者）
-
-```bash
-git clone https://github.com/saturndec/waoowaoo.git
-cd waoowaoo
-
-# 复制环境变量配置文件（必须在 npm install 之前完成）
-cp .env.example .env
-# ⚠️ 编辑 .env，填入你的 AI API Key（NEXTAUTH_URL 默认已是 http://localhost:3000，无需修改）
-
-npm install
-
-# 只启动基础设施
-# 注意：docker-compose.yml 将服务映射到非标准端口，.env.example 已按此预设
-mysql:13306  redis:16379  minio:19000
-docker compose up mysql redis minio -d
-
-# 初始化数据库表结构（首次必须执行，跳过会导致启动后报错）
-npx prisma db push
-
-# 启动开发服务器
-npm run dev
-```
-
-> [!WARNING]
-> 跳过 `npx prisma db push` 会导致所有数据库表不存在，启动后报错 `The table 'tasks' does not exist`。请务必先运行此命令再启动开发服务器。
+The recommended distribution is **prebuilt Docker images**. You do not need to install Node.js, MySQL, Redis, Temporal, or FFmpeg on your host for this path; application dependencies run in containers. The complete installation instructions for your assistant and manual setup are in [docs/INSTALL.md](docs/INSTALL.md).
 
 ---
 
-访问 [http://localhost:13000](http://localhost:13000)（方式一、二）或 [http://localhost:3000](http://localhost:3000)（方式三）开始使用！
+## 🔧 API Configuration
 
-> 首次启动会自动完成数据库初始化，无需任何额外配置。
+After launching, open your profile’s **API configuration** and add your OpenRouter API key. Provider calls are paid through your own account. Keep API keys out of chat and support logs.
 
-> [!TIP]
-> **如果遇到网页卡顿**：HTTP 模式下浏览器可能限制并发连接。可安装 [Caddy](https://caddyserver.com/docs/install) 启用 HTTPS：
-> ```bash
-> caddy run --config Caddyfile
-> ```
-> 然后访问 [https://localhost:1443](https://localhost:1443)
+Project data and media use local database and private MinIO storage; prompts and references are sent to the provider for requested AI tasks. Supported inline image references do not require a public media URL.
+
+For manual setup, source builds, backups, and upgrades, see [the installation guide](docs/INSTALL.md).
 
 ---
 
-## 🔧 API 配置
+## 📦 Tech Stack
 
-启动后进入**设置中心**配置 AI 服务的 API Key，内置配置教程。
-
-> 💡 **注意**：目前仅推荐使用各服务商官方 API，第三方兼容格式（OpenAI Compatible）尚不完善，后续版本会持续优化。
-
----
-
-## 📦 技术栈
-
-- **框架**: Next.js 15 + React 19
-- **数据库**: MySQL + Prisma ORM
-- **队列**: Redis + BullMQ
-- **样式**: Tailwind CSS v4
-- **认证**: NextAuth.js
+- **Framework**: Next.js 16 + React 19
+- **Database**: MySQL + Prisma ORM
+- **Durable execution**: Temporal
+- **Transport & cache**: Redis
+- **Media storage**: Private MinIO (S3)
+- **Styling**: Tailwind CSS v4
+- **Auth**: NextAuth.js
 
 ---
 
-## 📦 页面功能预览
+## 📦 Preview
 
-![4f7b913264f7f26438c12560340e958c67fa833a](https://github.com/user-attachments/assets/fa0e9c57-9ea0-4df3-893e-b76c4c9d304b)
-![67509361cbe6809d2496a550de5733b9f99a9702](https://github.com/user-attachments/assets/f2fb6a64-5ba8-4896-a064-be0ded213e42)
-![466e13c8fd1fc799d8f588c367ebfa24e1e99bf7](https://github.com/user-attachments/assets/09bbff39-e535-4c67-80a9-69421c3b05ee)
-![c067c197c20b0f1de456357c49cdf0b0973c9b31](https://github.com/user-attachments/assets/688e3147-6e95-43b0-b9e7-dd9af40db8a0)
+
 
 ---
 
-## 🤝 参与方式
+## 🤝 Contributing
 
-本项目由核心团队独立维护。欢迎你通过以下方式参与：
+This project is maintained by the core team. You are welcome to:
 
-- 🐛 提交 [Issue](https://github.com/saturndec/waoowaoo/issues) 反馈 Bug
-- 💡 提交 [Issue](https://github.com/saturndec/waoowaoo/issues) 提出功能建议
-- 🔧 提交 Pull Request 供参考 — 我们会认真审阅每一个 PR 的思路，但最终由团队自行实现修复，不会直接合并外部 PR
+- 🐛 File an [Issue](https://github.com/waooAI/waoowaoo/issues) to report bugs.
+- 💡 File an [Issue](https://github.com/waooAI/waoowaoo/issues) to suggest features.
+- 🔧 Submit a Pull Request for reference — we review ideas carefully, but the team implements changes internally rather than merging external PRs directly.
+
+---
+
+## License
+
+Starting with v0.5.0-beta.1, this distribution is licensed under [Elastic License 2.0](LICENSE). Personal use, internal business use, modification, and redistribution are permitted subject to its terms. Providing third parties with hosted or managed access to a substantial set of the software’s features requires separate permission. Earlier releases retain their original licenses; third-party components retain their respective licenses. This is source-available software, not OSI-approved open source.
 
 ---
 

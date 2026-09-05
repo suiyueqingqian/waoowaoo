@@ -1,0 +1,239 @@
+import { z } from 'zod'
+import { ApiError } from '@/lib/api-errors'
+import { prisma } from '@/lib/prisma'
+import { attachMediaFieldsToGlobalCharacter } from '@/lib/media/attach'
+import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
+import { authorizeStorageObjectReadForUser } from '@/lib/media/storage-access-policy'
+import { PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
+import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
+import type { ProjectAgentOperationRegistryDraft } from '@/lib/operations/types'
+import { defineOperation } from '@/lib/operations/define-operation'
+import { requireOwnedAssetTarget } from '@/lib/assets/services/asset-scope-ownership'
+
+function normalizeString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeFolderFilter(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined
+  const text = normalizeString(value)
+  if (!text) return undefined
+  if (text === 'null') return null
+  return text
+}
+
+export function createAssetHubCharacterLibraryOperations(): ProjectAgentOperationRegistryDraft {
+  return {
+    asset_hub_list_characters: defineOperation({
+      id: 'asset_hub_list_characters',
+      summary: 'List global characters for the current user (optionally filtered by folderId).',
+      intent: 'query',
+      effects: {
+        writes: false,
+        billable: false,
+        destructive: false,
+        overwrite: false,
+        bulk: false,
+        externalSideEffects: false,
+        longRunning: false,
+      },
+      inputSchema: z.object({
+        folderId: z.string().optional(),
+      }).passthrough(),
+      outputSchema: z.unknown(),
+      execute: async (ctx, input) => {
+        const folderId = normalizeFolderFilter((input as unknown as Record<string, unknown>).folderId)
+
+        const where: Record<string, unknown> = { userId: ctx.userId }
+        if (folderId === null) {
+          where.folderId = null
+        } else if (typeof folderId === 'string') {
+          where.folderId = folderId
+        }
+
+        const characters = await prisma.globalCharacter.findMany({
+          where,
+          include: { appearances: true },
+          orderBy: { createdAt: 'desc' },
+        })
+
+        const signedCharacters = await Promise.all(
+          characters.map((character) => attachMediaFieldsToGlobalCharacter(character)),
+        )
+
+        return { characters: signedCharacters }
+      },
+    }),
+
+    asset_hub_create_character: defineOperation({
+      id: 'asset_hub_create_character',
+      summary: 'Create a global character and its primary appearance.',
+      intent: 'act',
+      effects: {
+        writes: true,
+        workspaceResourceImpact: 'global_assets',
+        billable: false,
+        destructive: false,
+        overwrite: false,
+        bulk: false,
+        externalSideEffects: false,
+        longRunning: false,
+      },
+      inputSchema: z.object({
+        name: z.string().min(1),
+      }).passthrough(),
+      outputSchema: z.unknown(),
+      executeInTransaction: async (ctx, input, transaction) => {
+        const body = input as unknown as Record<string, unknown>
+
+        const name = normalizeString(body.name)
+        if (!name) throw new ApiError('INVALID_PARAMS')
+
+        const folderId = normalizeString(body.folderId) || null
+        const requestedImage = normalizeString(body.initialImageUrl) || null
+        const imageKey = await resolveStorageKeyFromMediaValue(requestedImage, transaction)
+        if (imageKey) await authorizeStorageObjectReadForUser(imageKey, ctx.userId, transaction)
+        if (requestedImage && !imageKey && !requestedImage.startsWith('https://')) {
+          throw new ApiError('INVALID_PARAMS', { field: 'initialImageUrl' })
+        }
+        const initialImageUrl = imageKey ?? requestedImage
+        const descriptionText = normalizeString(body.description) || `${name} 的角色设定`
+        const characterWithAppearances = await (async () => {
+          if (folderId) {
+            const folder = await transaction.globalAssetFolder.findUnique({
+              where: { id: folderId },
+              select: { id: true, userId: true },
+            })
+            if (!folder || folder.userId !== ctx.userId) throw new ApiError('INVALID_PARAMS')
+          }
+          const character = await transaction.globalCharacter.create({
+            data: {
+              userId: ctx.userId,
+              folderId,
+              name,
+              aliases: null,
+            },
+          })
+          await transaction.globalCharacterAppearance.create({
+            data: {
+              characterId: character.id,
+              appearanceIndex: PRIMARY_APPEARANCE_INDEX,
+              changeReason: '初始形象',
+              description: descriptionText,
+              descriptions: JSON.stringify([descriptionText]),
+              imageUrl: initialImageUrl,
+              imageUrls: encodeImageUrls(initialImageUrl ? [initialImageUrl] : []),
+              previousImageUrls: encodeImageUrls([]),
+            },
+          })
+          return await transaction.globalCharacter.findUnique({
+            where: { id: character.id },
+            include: { appearances: true },
+          })
+        })()
+
+        const withMedia = characterWithAppearances
+          ? await attachMediaFieldsToGlobalCharacter(characterWithAppearances, transaction)
+          : null
+
+        return {
+          success: true,
+          character: withMedia,
+        }
+      },
+    }),
+
+    asset_hub_get_character: defineOperation({
+      id: 'asset_hub_get_character',
+      summary: 'Get a single global character by id.',
+      intent: 'query',
+      effects: {
+        writes: false,
+        billable: false,
+        destructive: false,
+        overwrite: false,
+        bulk: false,
+        externalSideEffects: false,
+        longRunning: false,
+      },
+      inputSchema: z.object({
+        characterId: z.string().min(1),
+      }),
+      outputSchema: z.unknown(),
+      execute: async (ctx, input) => {
+        const character = await prisma.globalCharacter.findUnique({
+          where: { id: input.characterId },
+          include: { appearances: true },
+        })
+        if (!character || character.userId !== ctx.userId) {
+          throw new ApiError('NOT_FOUND')
+        }
+        const withMedia = await attachMediaFieldsToGlobalCharacter(character)
+        return { character: withMedia }
+      },
+    }),
+
+    asset_hub_update_character: defineOperation({
+      id: 'asset_hub_update_character',
+      summary: 'Update a global character (name, folder, profile fields).',
+      intent: 'act',
+      effects: {
+        writes: true,
+        workspaceResourceImpact: 'global_assets',
+        billable: false,
+        destructive: false,
+        overwrite: true,
+        bulk: false,
+        externalSideEffects: false,
+        longRunning: false,
+      },
+      inputSchema: z.object({
+        characterId: z.string().min(1),
+      }).passthrough(),
+      outputSchema: z.unknown(),
+      executeInTransaction: async (ctx, input, transaction) => {
+        const body = input as unknown as Record<string, unknown>
+        const characterId = normalizeString(body.characterId)
+        if (!characterId) throw new ApiError('INVALID_PARAMS')
+
+        await requireOwnedAssetTarget({
+          access: { scope: 'global', userId: ctx.userId },
+          kind: 'character',
+          assetId: characterId,
+        }, transaction)
+
+        const updateData: Record<string, unknown> = {}
+
+        if (body.name !== undefined) {
+          if (typeof body.name !== 'string') throw new ApiError('INVALID_PARAMS')
+          updateData.name = body.name.trim()
+        }
+        if (body.aliases !== undefined) updateData.aliases = body.aliases
+        if (body.profileData !== undefined) updateData.profileData = body.profileData
+        if (body.profileConfirmed !== undefined) updateData.profileConfirmed = body.profileConfirmed
+
+        if (body.folderId !== undefined) {
+          const folderId = normalizeString(body.folderId) || null
+          if (folderId) {
+            const folder = await transaction.globalAssetFolder.findUnique({
+              where: { id: folderId },
+              select: { id: true, userId: true },
+            })
+            if (!folder || folder.userId !== ctx.userId) throw new ApiError('INVALID_PARAMS')
+          }
+          updateData.folderId = folderId
+        }
+
+        const updated = await transaction.globalCharacter.update({
+          where: { id: characterId },
+          data: updateData,
+          include: { appearances: true },
+        })
+
+        const withMedia = await attachMediaFieldsToGlobalCharacter(updated, transaction)
+        return { success: true, character: withMedia }
+      },
+    }),
+
+  }
+}

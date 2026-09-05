@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { type Locale } from '@/i18n/routing'
 import ConfirmDialog from './ConfirmDialog'
 import { AppIcon } from '@/components/ui/icons'
@@ -35,10 +35,20 @@ function isSupportedLocale(locale?: string): locale is Locale {
     return locale === 'zh' || locale === 'en'
 }
 
-export default function LanguageSwitcher() {
+interface LanguageSwitcherProps {
+    /**
+     * pill: standalone rounded trigger with its own dropdown (default, public pages).
+     * menu-row: full-width row for embedding inside the account settings menu;
+     * options expand inline within the host card instead of a floating dropdown.
+     */
+    variant?: 'pill' | 'menu-row'
+}
+
+export default function LanguageSwitcher({ variant = 'pill' }: LanguageSwitcherProps) {
     const router = useRouter()
     const pathname = usePathname()
     const locale = useLocale()
+    const tNav = useTranslations('nav')
     const containerRef = useRef<HTMLDivElement | null>(null)
     const [isMenuOpen, setIsMenuOpen] = useState(false)
     const [showConfirm, setShowConfirm] = useState(false)
@@ -88,15 +98,72 @@ export default function LanguageSwitcher() {
         setPendingLocale(null)
     }
 
+    const confirmDialog = (
+        <ConfirmDialog
+            show={showConfirm}
+            title={confirmCopy.title}
+            message={confirmCopy.message.replace('{targetLanguage}', pendingLocale ? LANGUAGE_LABELS[pendingLocale] : '')}
+            confirmText={confirmCopy.action}
+            cancelText={confirmCopy.cancel}
+            onConfirm={confirmLanguageSwitch}
+            onCancel={cancelLanguageSwitch}
+            type="info"
+        />
+    )
+
+    if (variant === 'menu-row') {
+        return (
+            <>
+                <div>
+                    <button
+                        type="button"
+                        onClick={() => setIsMenuOpen((prev) => !prev)}
+                        aria-label={SWITCH_CONFIRM_COPY[currentLocale].triggerLabel}
+                        aria-expanded={isMenuOpen}
+                        className="glass-menu-item"
+                    >
+                        <AppIcon name="globe" className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left">{tNav('settingsMenu.language')}</span>
+                        <span className="text-xs text-[var(--glass-text-tertiary)]">{LANGUAGE_LABELS[currentLocale]}</span>
+                        <AppIcon
+                            name="chevronDown"
+                            className={`h-3.5 w-3.5 shrink-0 text-[var(--glass-text-tertiary)] transition-transform duration-150 ${isMenuOpen ? 'rotate-180' : ''}`}
+                        />
+                    </button>
+                    {isMenuOpen ? (
+                        <div className="mt-1 space-y-0.5 rounded-[10px] bg-[var(--glass-selection-bg)] p-1">
+                            {(Object.entries(LANGUAGE_LABELS) as Array<[Locale, string]>).map(([optionLocale, label]) => {
+                                const isActive = optionLocale === currentLocale
+                                return (
+                                    <button
+                                        key={optionLocale}
+                                        type="button"
+                                        onClick={() => requestLanguageSwitch(optionLocale)}
+                                        data-active={isActive}
+                                        className="glass-selection-control flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-[13px]"
+                                    >
+                                        <span>{label}</span>
+                                        {isActive ? <AppIcon name="check" className="h-3.5 w-3.5 text-[var(--glass-accent-from)]" /> : null}
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    ) : null}
+                </div>
+                {confirmDialog}
+            </>
+        )
+    }
+
     return (
         <>
             <div ref={containerRef} className="relative inline-block">
                 <button
                     type="button"
                     onClick={() => setIsMenuOpen((prev) => !prev)}
-                    aria-label={SWITCH_CONFIRM_COPY[targetLocale].triggerLabel}
+                    aria-label={SWITCH_CONFIRM_COPY[currentLocale].triggerLabel}
                     aria-expanded={isMenuOpen}
-                    className="glass-btn-base glass-btn-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                    className="glass-selection-control inline-flex items-center gap-2 rounded-full px-2.5 py-1.5 text-sm font-medium"
                 >
                     <AppIcon name="globe" className="h-4 w-4" />
                     <span>{LANGUAGE_LABELS[currentLocale]}</span>
@@ -112,10 +179,8 @@ export default function LanguageSwitcher() {
                                     key={locale}
                                     type="button"
                                     onClick={() => requestLanguageSwitch(locale)}
-                                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${isActive
-                                        ? 'bg-[var(--glass-fill-active)] text-[var(--glass-text-primary)]'
-                                        : 'text-[var(--glass-text-secondary)] hover:bg-[var(--glass-fill-hover)] hover:text-[var(--glass-text-primary)]'
-                                        }`}
+                                    data-active={isActive}
+                                    className="glass-selection-control w-full rounded-lg px-3 py-2 text-left text-sm"
                                 >
                                     {label}
                                 </button>
@@ -124,16 +189,7 @@ export default function LanguageSwitcher() {
                     </div>
                 ) : null}
             </div>
-            <ConfirmDialog
-                show={showConfirm}
-                title={confirmCopy.title}
-                message={confirmCopy.message.replace('{targetLanguage}', pendingLocale ? LANGUAGE_LABELS[pendingLocale] : '')}
-                confirmText={confirmCopy.action}
-                cancelText={confirmCopy.cancel}
-                onConfirm={confirmLanguageSwitch}
-                onCancel={cancelLanguageSwitch}
-                type="info"
-            />
+            {confirmDialog}
         </>
     )
 }

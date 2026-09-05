@@ -5,21 +5,27 @@ import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '../keys'
 import type { TaskIntent } from '@/lib/task/intent'
 import type { TaskTargetOverlayMap } from '../task-target-overlay'
-import { createScopedLogger } from '@/lib/logging/core'
 import { apiFetch } from '@/lib/api-fetch'
+import {
+  taskRuntimeTargetQueryKey,
+  taskTargetPairKey,
+  type TaskRuntimeTarget,
+} from '@/lib/task/runtime-targets'
 
 export type TaskTargetStateQuery = {
   targetType: string
   targetId: string
-  types?: string[]
+  types?: readonly string[]
 }
 
 export type TaskTargetState = {
+  taskId?: string | null
   targetType: string
   targetId: string
-  phase: 'idle' | 'queued' | 'processing' | 'completed' | 'failed'
+  phase: 'idle' | 'queued' | 'processing' | 'completed' | 'failed' | 'canceled'
   runningTaskId: string | null
   runningTaskType: string | null
+  progressGroupId?: string | null
   intent: TaskIntent
   hasOutputAtStart: boolean | null
   progress: number | null
@@ -27,7 +33,6 @@ export type TaskTargetState = {
   stageLabel: string | null
   lastError: {
     code: string
-    message: string
   } | null
   updatedAt: string | null
 }
@@ -47,25 +52,6 @@ type TaskTargetStateBatch = {
 const TARGET_STATE_BATCH_WINDOW_MS = 120
 const TARGET_STATE_CHUNK_SIZE = 500
 const pendingTaskTargetStateBatches = new Map<string, TaskTargetStateBatch>()
-const mergeTraceSignatureByKey = new Map<string, string>()
-const taskTargetStateLogger = createScopedLogger({
-  module: 'query.use-task-target-state-map',
-})
-
-function traceFrontend(event: string, details: Record<string, unknown>) {
-  if (typeof window === 'undefined') return
-  console.info(`[FE_TASK_TRACE] ${event}`, details)
-}
-
-function stateKey(targetType: string, targetId: string) {
-  return `${targetType}:${targetId}`
-}
-
-function targetQueryKey(target: TaskTargetStateQuery) {
-  const types = (target.types || []).filter(Boolean).sort()
-  return `${target.targetType}:${target.targetId}:${types.join(',')}`
-}
-
 function normalizeTargets(targets: TaskTargetStateQuery[]) {
   const deduped = new Map<string, TaskTargetStateQuery>()
   for (const target of targets) {
@@ -94,6 +80,7 @@ function buildIdleState(target: TaskTargetStateQuery): TaskTargetState {
     phase: 'idle',
     runningTaskId: null,
     runningTaskType: null,
+    progressGroupId: null,
     intent: 'process',
     hasOutputAtStart: null,
     progress: null,
@@ -105,7 +92,7 @@ function buildIdleState(target: TaskTargetStateQuery): TaskTargetState {
 }
 
 function matchesTaskTypeWhitelist(
-  whitelist: string[] | undefined,
+  whitelist: readonly string[] | undefined,
   runningTaskType: string | null,
 ): boolean {
   if (!whitelist || whitelist.length === 0) return true
@@ -114,60 +101,8 @@ function matchesTaskTypeWhitelist(
   return whitelist.some((type) => type.toLowerCase() === normalized)
 }
 
-function shouldTraceMergeTarget(targetType: string) {
-  return targetType === 'NovelPromotionPanel'
-}
-
-function logMergeDecision(params: {
-  projectId: string | null | undefined
-  key: string
-  decision:
-  | 'overlay_applied'
-  | 'overlay_expired'
-  | 'overlay_phase_ignored'
-  | 'overlay_task_type_mismatch'
-  | 'server_processing_authoritative'
-  runtimePhase: string | null
-  runtimeTaskId: string | null
-  runtimeTaskType: string | null
-  currentPhase: string | null
-  whitelist: string[]
-}) {
-  const signature = [
-    params.decision,
-    params.runtimePhase || '',
-    params.runtimeTaskId || '',
-    params.runtimeTaskType || '',
-    params.currentPhase || '',
-    params.whitelist.join(','),
-  ].join('|')
-  const last = mergeTraceSignatureByKey.get(params.key)
-  if (last === signature) return
-  mergeTraceSignatureByKey.set(params.key, signature)
-  taskTargetStateLogger.info({
-    action: 'task-state.merge.decision',
-    message: 'task state merge decision',
-    details: {
-      projectId: params.projectId || null,
-      key: params.key,
-      decision: params.decision,
-      runtimePhase: params.runtimePhase,
-      runtimeTaskId: params.runtimeTaskId,
-      runtimeTaskType: params.runtimeTaskType,
-      currentPhase: params.currentPhase,
-      whitelist: params.whitelist,
-    },
-  })
-  traceFrontend('task-state.merge.decision', {
-    projectId: params.projectId || null,
-    key: params.key,
-    decision: params.decision,
-    runtimePhase: params.runtimePhase,
-    runtimeTaskId: params.runtimeTaskId,
-    runtimeTaskType: params.runtimeTaskType,
-    currentPhase: params.currentPhase,
-    whitelist: params.whitelist,
-  })
+function normalizedIdentity(value: string | null | undefined): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 /** 将数组分成固定大小的块 */
@@ -212,21 +147,21 @@ async function flushTaskTargetStateBatch(projectId: string) {
     )
 
     // 合并所有分片的结果到统一索引
-    // 用 targetQueryKey（含 types）做精确索引，避免同一 (targetType, targetId)
-    // 的不同 types 的状态互相覆盖（例如 image 的 processing 被 lip_sync 的 idle 覆盖）
+    // 用 taskRuntimeTargetQueryKey（含 types）做精确索引，避免同一 (targetType, targetId)
+    // 的不同 types 的状态互相覆盖（例如 image 的 processing 被 video 的 idle 覆盖）
     const byTargetQueryKey = new Map<string, TaskTargetState>()
     for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
       const chunkTargets = chunks[chunkIdx]
       const chunkStates = chunkResults[chunkIdx]
       for (let i = 0; i < chunkTargets.length && i < chunkStates.length; i++) {
-        byTargetQueryKey.set(targetQueryKey(chunkTargets[i]), chunkStates[i])
+        byTargetQueryKey.set(taskRuntimeTargetQueryKey(chunkTargets[i]), chunkStates[i])
       }
     }
 
     for (const subscriber of subscribers) {
       const subset: TaskTargetState[] = []
       for (const target of subscriber.targets) {
-        const state = byTargetQueryKey.get(targetQueryKey(target))
+        const state = byTargetQueryKey.get(taskRuntimeTargetQueryKey(target))
         if (state) subset.push(state)
       }
       subscriber.resolve(subset)
@@ -255,7 +190,7 @@ function fetchTaskTargetStatesBatched(
     }
 
     for (const target of targets) {
-      batch.targetsByKey.set(targetQueryKey(target), target)
+      batch.targetsByKey.set(taskRuntimeTargetQueryKey(target), target)
     }
     batch.subscribers.push({
       targets,
@@ -285,16 +220,18 @@ export function useTaskTargetStateMap(
     [normalizedTargets],
   )
   const enabled = (options.enabled ?? true) && !!projectId && normalizedTargets.length > 0
+  const overlayQuery = useQuery<TaskTargetOverlayMap>({
+    queryKey: queryKeys.tasks.targetStateOverlay(projectId || ''),
+    enabled: false,
+    initialData: {},
+    queryFn: async () => ({}),
+  })
 
   const query = useQuery({
     queryKey: queryKeys.tasks.targetStates(projectId || '', serializedTargets),
     enabled,
     staleTime: options.staleTime ?? 15000,
-    refetchInterval: (state) => {
-      const data = state.state.data as TaskTargetState[] | undefined
-      if (!data) return false
-      return data.some((item) => item.phase === 'queued' || item.phase === 'processing') ? 2000 : false
-    },
+    refetchInterval: false,
     refetchOnMount: false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
@@ -303,92 +240,43 @@ export function useTaskTargetStateMap(
     },
   })
 
-  const overlayQuery = useQuery<TaskTargetOverlayMap>({
-    queryKey: queryKeys.tasks.targetStateOverlay(projectId || ''),
-    enabled: false,
-    initialData: {},
-    queryFn: async () => ({}),
-  })
-
   const mergedByKey = useMemo(() => {
     const map = new Map<string, TaskTargetState>()
-    for (const state of query.data || []) {
-      map.set(stateKey(state.targetType, state.targetId), state)
+    const queryData = query.data || []
+    for (let i = 0; i < normalizedTargets.length; i++) {
+      const target = normalizedTargets[i]
+      map.set(taskRuntimeTargetQueryKey(target), queryData[i] || buildIdleState(target))
     }
 
     const overlay = overlayQuery.data || {}
-    const now = Date.now()
     for (const target of normalizedTargets) {
-      const key = stateKey(target.targetType, target.targetId)
+      const key = taskTargetPairKey(target.targetType, target.targetId)
+      const queryKey = taskRuntimeTargetQueryKey(target)
       const runtime = overlay[key]
       if (!runtime) continue
-      if (runtime.expiresAt && runtime.expiresAt <= now) {
-        if (shouldTraceMergeTarget(target.targetType)) {
-          logMergeDecision({
-            projectId,
-            key,
-            decision: 'overlay_expired',
-            runtimePhase: runtime.phase,
-            runtimeTaskId: runtime.runningTaskId,
-            runtimeTaskType: runtime.runningTaskType,
-            currentPhase: map.get(key)?.phase || null,
-            whitelist: target.types || [],
-          })
-        }
-        continue
-      }
       if (runtime.phase !== 'queued' && runtime.phase !== 'processing') {
-        if (shouldTraceMergeTarget(target.targetType)) {
-          logMergeDecision({
-            projectId,
-            key,
-            decision: 'overlay_phase_ignored',
-            runtimePhase: runtime.phase,
-            runtimeTaskId: runtime.runningTaskId,
-            runtimeTaskType: runtime.runningTaskType,
-            currentPhase: map.get(key)?.phase || null,
-            whitelist: target.types || [],
-          })
-        }
         continue
       }
       // Skip overlay if the target has a types whitelist and the task type doesn't match
       if (!matchesTaskTypeWhitelist(target.types, runtime.runningTaskType)) {
-        if (shouldTraceMergeTarget(target.targetType)) {
-          logMergeDecision({
-            projectId,
-            key,
-            decision: 'overlay_task_type_mismatch',
-            runtimePhase: runtime.phase,
-            runtimeTaskId: runtime.runningTaskId,
-            runtimeTaskType: runtime.runningTaskType,
-            currentPhase: map.get(key)?.phase || null,
-            whitelist: target.types || [],
-          })
-        }
         continue
       }
 
-      const current = map.get(key)
+      const current = map.get(queryKey)
       if (current) {
         // Server-side processing state is authoritative.
         if (current.phase === 'processing') {
-          if (shouldTraceMergeTarget(target.targetType)) {
-            logMergeDecision({
-              projectId,
-              key,
-              decision: 'server_processing_authoritative',
-              runtimePhase: runtime.phase,
-              runtimeTaskId: runtime.runningTaskId,
-              runtimeTaskType: runtime.runningTaskType,
-              currentPhase: current.phase,
-              whitelist: target.types || [],
-            })
-          }
           continue
         }
+        if (current.phase === 'completed' || current.phase === 'failed' || current.phase === 'canceled') {
+          const terminalTaskId = normalizedIdentity(current.taskId)
+          const overlayTaskId = normalizedIdentity(runtime.runningTaskId)
+          if (!terminalTaskId || terminalTaskId === overlayTaskId) {
+            continue
+          }
+        }
       }
-      map.set(key, {
+      map.set(queryKey, {
         ...(current || buildIdleState(target)),
         ...runtime,
         phase: runtime.phase,
@@ -396,45 +284,49 @@ export function useTaskTargetStateMap(
         targetId: target.targetId,
         lastError: null,
       })
-      if (shouldTraceMergeTarget(target.targetType)) {
-        logMergeDecision({
-          projectId,
-          key,
-          decision: 'overlay_applied',
-          runtimePhase: runtime.phase,
-          runtimeTaskId: runtime.runningTaskId,
-          runtimeTaskType: runtime.runningTaskType,
-          currentPhase: current?.phase || null,
-          whitelist: target.types || [],
-        })
-      }
     }
     return map
   }, [normalizedTargets, overlayQuery.data, query.data])
 
   const mergedData = useMemo(() => {
     return normalizedTargets.map((target) =>
-      mergedByKey.get(stateKey(target.targetType, target.targetId)) || buildIdleState(target),
+      mergedByKey.get(taskRuntimeTargetQueryKey(target)) || buildIdleState(target),
     )
   }, [mergedByKey, normalizedTargets])
+
+  const byQueryKey = useMemo(() => {
+    const map = new Map<string, TaskTargetState>()
+    for (let i = 0; i < normalizedTargets.length; i++) {
+      const target = normalizedTargets[i]
+      map.set(taskRuntimeTargetQueryKey(target), mergedData[i] || buildIdleState(target))
+    }
+    return map
+  }, [mergedData, normalizedTargets])
 
   const byKey = useMemo(() => {
     const map = new Map<string, TaskTargetState>()
     for (const state of mergedData) {
-      map.set(stateKey(state.targetType, state.targetId), state)
+      map.set(taskTargetPairKey(state.targetType, state.targetId), state)
     }
     return map
   }, [mergedData])
 
   const getState = useMemo(() => {
     return (targetType: string, targetId: string) =>
-      byKey.get(stateKey(targetType, targetId)) || null
+      byKey.get(taskTargetPairKey(targetType, targetId)) || null
   }, [byKey])
+
+  const getQueryState = useMemo(() => {
+    return (target: TaskRuntimeTarget) =>
+      byQueryKey.get(taskRuntimeTargetQueryKey(target)) || null
+  }, [byQueryKey])
 
   return {
     ...query,
     data: mergedData,
+    byQueryKey,
     byKey,
     getState,
+    getQueryState,
   }
 }

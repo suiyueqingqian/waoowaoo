@@ -1,0 +1,175 @@
+/*
+ * Beautiful UI design tokens adopted for the workspace assistant conversation.
+ * Namespaced conversation colors and typography; surfaces use the glass shell.
+ */
+:root {
+  --bui-canvas: #f1f2f3;
+  --bui-surface: #fff;
+  --bui-inset: #f7f8f9;
+  --bui-hover: #f4f5f6;
+  --bui-hover-2: #e7e9eb;
+  --bui-field: #f2f2f3;
+  --bui-ink: #1f2124;
+  --bui-ink-2: #62656b;
+  --bui-ink-3: #9a9da3;
+  --bui-line: #ecedef;
+  --bui-line-strong: #e0e2e5;
+  --bui-accent: #0285ff;
+  --bui-green: #189a4d;
+  --bui-green-tint: #e8f5ed;
+  --bui-orange: #ef720c;
+  --bui-red: #e3474c;
+  --bui-red-tint: #fcecec;
+  --bui-shadow-hairline: 0 0 0 1px var(--bui-line);
+  --bui-shadow-btn: 0 0 0 1px var(--bui-line-strong), 0 1px 2px #1018280d;
+  --bui-shadow-card: 0 0 0 1px var(--bui-line), 0 1px 2px #1018280a, 0 2px 6px #10182808;
+  --wa-text-body: 16px;
+  --wa-text-trace: 13.5px;
+  --wa-text-detail: 12.5px;
+  --wa-text-leading: 1.6;
+}
+
+/* One type scale for messages and Markdown, including streamed content.
+   Bold paragraphs stay paragraphs; only Markdown headings create hierarchy. */
+.wa-assistant-message,
+.workspace-assistant-markdown {
+  font-size: var(--wa-text-body);
+  line-height: var(--wa-text-leading);
+}
+
+.workspace-assistant-markdown {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.workspace-assistant-markdown p,
+.workspace-assistant-markdown ul,
+.workspace-assistant-markdown ol,
+.workspace-assistant-markdown blockquote {
+  margin: 0 0 12px;
+}
+
+.workspace-assistant-markdown :where(h1, h2, h3) {
+  margin: 20px 0 9px;
+  color: inherit;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.workspace-assistant-markdown h1 { font-size: 2em; }
+.workspace-assistant-markdown h2 { font-size: 1.5em; }
+.workspace-assistant-markdown h3 { font-size: 1.17em; }
+.workspace-assistant-markdown h4 { margin: 1.33em 0; font-size: 1em; font-weight: 700; }
+.workspace-assistant-markdown h5 { margin: 1.67em 0; font-size: .83em; font-weight: 700; }
+.workspace-assistant-markdown h6 { margin: 2.33em 0; font-size: .67em; font-weight: 700; }
+.workspace-assistant-markdown strong { font-weight: bolder; }
+.workspace-assistant-markdown ul { list-style: disc; padding-left: 22px; }
+.workspace-assistant-markdown ol { list-style: decimal; padding-left: 22px; }
+.workspace-assistant-markdown li { margin: 3px 0; }
+
+.workspace-assistant-markdown code {
+  border: 1px solid var(--bui-line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  background: var(--bui-inset);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.workspace-assistant-markdown pre {
+  max-width: 100%;
+  margin: 4px 0 14px;
+  overflow-x: auto;
+  border: 1px solid var(--bui-line);
+  border-radius: 12px;
+  padding: 13px;
+  background: var(--bui-inset);
+  font-family: var(--font-mono);
+}
+
+.workspace-assistant-markdown pre code {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.workspace-assistant-markdown blockquote {
+  border-left: 2px solid var(--glass-stroke-base);
+  padding-left: 12px;
+  color: var(--bui-ink-2);
+}
+
+.workspace-assistant-markdown hr { margin: 16px 0; border-color: var(--glass-stroke-base); }
+.wa-markdown-table { max-width: 100%; overflow-x: auto; }
+.wa-markdown-table table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.wa-markdown-table th,
+.wa-markdown-table td { border: 1px solid var(--glass-stroke-base); padding: 7px 9px; text-align: left; }
+.wa-markdown-table th { background: var(--bui-inset); font-weight: 700; }
+
+.wa-assistant-composer-input { font-size: var(--wa-text-body); line-height: 1.55; }
+
+/* Horror's bounded message viewport and work trace grammar. The draft lives
+   outside this contained layout; no paint containment clips menus or focus. */
+.wa-assistant-thread { display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+.wa-assistant-viewport { min-height: 0; contain: size layout; }
+.wa-work-trace { display: flex; width: 100%; min-width: 0; flex-direction: column; }
+.wa-work-trace-header { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 8px; border: 0; border-radius: 8px; padding: 4px 6px; margin-left: -6px; background: transparent; color: var(--bui-ink-2); font-size: 14px; font-weight: 550; text-align: left; }
+.wa-work-trace-header > span:first-of-type { flex: 0 0 auto; white-space: nowrap; }
+.wa-work-trace-header:not(:disabled) { cursor: pointer; }
+.wa-work-trace-header:not(:disabled):hover { background: var(--bui-hover-2); }
+.wa-work-trace-current { min-width: 0; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bui-ink-3); font-size: var(--wa-text-detail); font-weight: 450; }
+.wa-work-trace-divider { width: 100%; margin-top: 8px; border-top: 1px solid var(--bui-line); }
+.wa-work-trace-shimmer { color: transparent; background: linear-gradient(90deg, var(--bui-ink-3) 35%, var(--bui-ink) 50%, var(--bui-ink-3) 65%); background-clip: text; background-size: 200% 100%; animation: wa-bui-shimmer 1.4s linear infinite; }
+.wa-work-trace-expand { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .4s cubic-bezier(.23,1,.32,1), opacity .4s ease; }
+.wa-work-trace-expand.is-expanded { grid-template-rows: 1fr; opacity: 1; }
+.wa-work-trace-overflow { min-height: 0; overflow: hidden; }
+.wa-work-trace-rail { display: flex; position: relative; flex-direction: column; gap: 7px; margin: 4px 0 0; padding: 5px 0; }
+.wa-work-trace-text { min-width: 0; padding: 3px 6px; color: var(--bui-ink-2); font-size: var(--wa-text-trace); line-height: 1.55; animation: wa-work-trace-rise .32s cubic-bezier(.23,1,.32,1) both; }
+.wa-work-trace-text.is-commentary { color: var(--bui-ink); }
+.wa-work-trace-markdown { font-size: inherit; line-height: inherit; }
+.wa-work-trace-markdown p { margin-bottom: 8px; }
+.wa-work-trace-markdown :is(h1, h2, h3) { margin: 10px 0 6px; font-size: 1em; }
+.workspace-assistant-markdown > :first-child { margin-top: 0; }
+.workspace-assistant-markdown > :last-child,
+.workspace-assistant-markdown li > :last-child,
+.workspace-assistant-markdown blockquote > :last-child { margin-bottom: 0; }
+.assistant-stream-in { display: inline; will-change: filter, opacity; animation: wa-work-trace-stream .42s cubic-bezier(.22,.61,.25,1) both; }
+@keyframes wa-work-trace-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes wa-work-trace-stream { from { opacity: .08; filter: blur(5px); } to { opacity: 1; filter: blur(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .wa-work-trace-shimmer, .wa-work-trace-text, .assistant-stream-in { animation: none !important; }
+  .wa-work-trace-expand { transition: none; }
+}
+
+@keyframes wa-bui-shimmer {
+  to { background-position: -200% 0; }
+}
+
+@keyframes wa-bui-fade-up {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes wa-bui-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.wa-bui-underline {
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+  transition: text-decoration-color 150ms;
+}
+.wa-bui-underline:hover,
+a:hover > .wa-bui-underline {
+  text-decoration-color: currentColor;
+}

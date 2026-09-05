@@ -1,26 +1,20 @@
 {
-  "title": "From Inspiration to Screen",
-  "subtitle": "Describe your story and let AI generate cinematic short dramas",
-  "inputPlaceholder": "Enter your story idea, novel excerpt, or script outline...",
+  "title": "What do you want to make",
+  "subtitle": "one line is enough — it takes it from there…",
+  "inputPlaceholder": "e.g. A courier finds a phone that talks back…",
+  "aspectRatio": "Aspect ratio",
+  "aspectRatioCurrent": "Aspect ratio: {ratio}",
   "defaultProjectName": "New Project {timestamp}",
-  "startCreation": "Start Creating",
-  "recentProjects": "Recent Projects",
+  "createFailed": "Failed to create project. Please try again.",
+  "projectsLoadFailed": "Failed to load recent projects. Please retry.",
+  "startCreation": "Start making",
+  "recentProjects": "Recently working on",
   "viewAll": "View All Projects",
-  "noProjects": "No projects yet. Start your first creation from above!",
+  "noProjects": "Nothing here yet. One line above is enough to start.",
   "ago": {
     "justNow": "Just now",
     "minutesAgo": "{n}m ago",
     "hoursAgo": "{n}h ago",
     "daysAgo": "{n}d ago"
-  },
-  "aiWrite": {
-    "trigger": "AI Write",
-    "modalTitle": "AI Writing Assistant",
-    "modalSubtitle": "Enter your idea and let AI generate a complete story",
-    "inputLabel": "Enter your creative idea",
-    "placeholder": "Enter keywords, story outline, or a short idea...\n\ne.g.\n• ancient palace, revenge, mystery, female lead\n• Act 1: The heroine returns to the capital; Act 2: A chance encounter at the royal banquet",
-    "hint": "💡 You can enter keywords, story outlines, or creative descriptions. AI will expand your input into a complete story",
-    "startAiWrite": "Start AI Writing",
-    "cancel": "Cancel"
   }
 }

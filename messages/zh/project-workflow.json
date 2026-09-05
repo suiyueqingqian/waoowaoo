@@ -1,0 +1,266 @@
+{
+  "canvas": {
+    "workspace": {
+      "toolbar": {
+        "fitView": "适应画布",
+        "zoomIn": "放大",
+        "zoomOut": "缩小",
+        "arrange": "整理布局（复位）",
+        "arrangeFailed": "布局保存失败，请重试。"
+      },
+      "actions": {
+        "discuss": "和 AI 讨论",
+        "preview": "预览",
+        "copyPrompt": "复制提示词",
+        "copyPromptSuccess": "提示词已复制",
+        "copyPromptFailed": "提示词复制失败",
+        "download": "下载",
+        "retry": "重试",
+        "regenerate": "再来一版",
+        "animate": "生成视频",
+        "useAsReference": "以此为参考",
+        "delete": "删除",
+        "unavailable": "当前无法执行此操作"
+      },
+      "errors": {
+        "unknown": "这个资源生成失败，你可以重新尝试。",
+        "providerDiagnostic": "服务商原始错误：{message}"
+      },
+      "preview": {
+        "position": "{current} / {total}",
+        "discuss": "讨论这个结果",
+        "groupDescription": "浏览 {count} 个独立生成的结果。",
+        "singleDescription": "预览这个资源。",
+        "previous": "上一个结果",
+        "next": "下一个结果",
+        "structuredUnknown": "结构化内容",
+        "structuredEntries": "结构化内容 · {count} 项"
+      },
+      "operationConfirm": {
+        "failed": "操作未能完成",
+        "destructiveTitle": "确认操作",
+        "title": "确认生成",
+        "destructiveDescription": "继续前请确认本次操作。",
+        "description": "确认生成任务数量与最高报价后再提交。",
+        "cancel": "取消",
+        "executing": "提交中…",
+        "deleting": "删除中…",
+        "confirm": "确认并生成",
+        "confirmDelete": "确认删除",
+        "taskCount": "{count} 个生成任务",
+        "priceHidden": "价格不可见",
+        "priceCredits": "最高 {cost} 积分",
+        "destructiveBody": "将从当前项目目录中删除“{target}”。资源采用软删除，可通过系统恢复能力找回。",
+        "destructiveBodyMany": "将从当前项目目录中删除 {count} 个资源：{names}。资源采用软删除，可用撤销（⌘Z）找回。"
+      },
+      "history": {
+        "restored": "已恢复 {count} 个资源",
+        "restoreFailed": "恢复失败"
+      },
+      "create": {
+        "menuTitle": "要在这里放什么？",
+        "image": "生成图片",
+        "video": "生成视频",
+        "upload": "上传素材",
+        "draftTitle": {
+          "image": "新图片",
+          "video": "新视频"
+        },
+        "frameHint": "结果会出现在这里",
+        "briefPlaceholder": {
+          "image": "你想要一张什么样的画面？",
+          "video": "你想要一段什么样的视频？"
+        },
+        "aspectRatio": "画幅",
+        "references": "参考素材",
+        "referencesHint": "上传素材、选择项目素材，或将画布卡片拖到这里。",
+        "referenceRoleLabel": "参考用途",
+        "removeReference": "移除 {name}",
+        "referenceRole": {
+          "reference_image": "参考图",
+          "first_frame": "首帧",
+          "last_frame": "尾帧",
+          "reference_video": "参考视频",
+          "reference_audio": "参考音频",
+          "context": "参考文件"
+        },
+        "submit": "交给 AI 生成",
+        "cancel": "取消",
+        "submitted": "AI 正在起草并准备生成…",
+        "submittedHint": "在右侧对话中确认后，结果会出现在这里。",
+        "message": {
+          "imageIntro": "请在画布上生成一张图片。我的要求：{brief}",
+          "videoIntro": "请在画布上生成一段视频。我的要求：{brief}",
+          "aspectRatio": "画幅：{ratio}",
+          "videoDuration": "视频时长：{seconds} 秒。",
+          "folder": "保存到文件夹：{path}",
+          "folderRoot": "保存到项目根目录。",
+          "referencesTitle": "参考素材：",
+          "referenceAttached": "- {role}：{name}（见附件）",
+          "referencePath": "- {role}：{name}（项目文件 {path}）",
+          "promptOwnership": "请你根据我的要求写出完整的最终提示词并直接提交生成，不需要再向我确认提示词内容。",
+          "parameter": "{field}：{value}"
+        },
+        "advanced": "高级参数",
+        "parameterDefault": "默认",
+        "capabilitiesLoading": "正在读取模型能力…",
+        "modelMissing": {
+          "image": "项目还没有配置图片模型，请先在设置里选择。",
+          "video": "项目还没有配置视频模型，请先在设置里选择。"
+        },
+        "parameter": {
+          "resolution": "分辨率",
+          "quality": "画质",
+          "generateAudio": "生成音频"
+        },
+        "parameterValue": {
+          "on": "开",
+          "off": "关"
+        },
+        "capabilitiesFailed": "模型能力读取失败，请检查模型与服务商配置。",
+        "parameterRequired": "请选择",
+        "duration": "时长",
+        "durationSeconds": "{seconds} 秒",
+        "reviewConfiguration": "使用当前配置",
+        "adaptiveFrame": "画幅跟随首帧",
+        "pricingLimited": "仅提供目前支持报价的分辨率和参考模式。",
+        "validation": {
+          "MODEL_UNAVAILABLE": "当前模型能力不可用，请检查配置或稍后重试。",
+          "MODEL_CONFIGURATION_UNAVAILABLE": "当前固定参数没有可用的生成方案，请在模型设置中重新选择。",
+          "CONFIGURATION_CHANGED": "模型配置已改变，请检查下面的选项后使用当前配置。",
+          "ASPECT_RATIO_REQUIRED": "请选择当前模型支持的画幅。",
+          "DURATION_REQUIRED": "请选择视频时长。",
+          "PARAMETERS_REQUIRED": "请在高级参数中选择有效的分辨率、画质或音频选项。",
+          "IMAGE_REFERENCE_ROLE_INVALID": "图片生成只支持参考图片和上下文文件。",
+          "IMAGE_MODEL_REFERENCE_LIMIT_EXCEEDED": "参考图片超过当前模型上限，请移除多余图片。",
+          "VIDEO_REFERENCE_ROLE_INVALID": "参考素材的类型和角色不匹配，请重新添加。",
+          "VIDEO_MODEL_INPUT_MODE_UNSUPPORTED": "当前模型或运行环境不支持这组参考素材，请移除或重新选择。",
+          "VIDEO_MODEL_FRAME_INPUT_INVALID": "首尾帧不能与普通参考混用，且尾帧必须搭配唯一首帧。",
+          "VIDEO_MODEL_REFERENCE_LIMIT_EXCEEDED": "参考图片超过模型上限，请移除多余图片。",
+          "VIDEO_MODEL_AUDIO_REFERENCE_LIMIT_EXCEEDED": "参考音频超过模型上限，请移除多余音频。",
+          "VIDEO_MODEL_VIDEO_REFERENCE_LIMIT_EXCEEDED": "参考视频超过模型上限，请移除多余视频。",
+          "VIDEO_MODEL_TOTAL_REFERENCE_LIMIT_EXCEEDED": "参考素材总数超过模型上限，请移除多余素材。",
+          "VIDEO_MODEL_REFERENCE_AUDIO_REQUIRES_VISUAL": "此模型的参考音频需要搭配参考图片或视频。",
+          "VIDEO_MODEL_REFERENCE_AUDIO_DURATION_UNKNOWN": "参考素材缺少可用时长，请重新上传或选择其他素材。",
+          "VIDEO_MODEL_REFERENCE_AUDIO_TOO_SHORT": "参考素材太短，不符合当前模型要求。",
+          "VIDEO_MODEL_REFERENCE_AUDIO_TOO_LONG": "参考素材太长，不符合当前模型要求。",
+          "VIDEO_MODEL_REFERENCE_AUDIO_TOTAL_DURATION_TOO_SHORT": "参考素材总时长不足，不符合当前模型要求。",
+          "VIDEO_MODEL_REFERENCE_AUDIO_TOTAL_DURATION_EXCEEDED": "参考素材总时长超过当前模型上限，请移除部分素材。",
+          "VIDEO_MODEL_REFERENCE_VIDEO_DURATION_UNKNOWN": "参考素材缺少可用时长，请重新上传或选择其他素材。",
+          "VIDEO_MODEL_REFERENCE_VIDEO_TOO_SHORT": "参考素材太短，不符合当前模型要求。",
+          "VIDEO_MODEL_REFERENCE_VIDEO_TOO_LONG": "参考素材太长，不符合当前模型要求。",
+          "VIDEO_MODEL_REFERENCE_VIDEO_TOTAL_DURATION_TOO_SHORT": "参考素材总时长不足，不符合当前模型要求。",
+          "VIDEO_MODEL_REFERENCE_VIDEO_TOTAL_DURATION_EXCEEDED": "参考素材总时长超过当前模型上限，请移除部分素材。"
+        },
+        "referenceLimits": {
+          "image": "此入口最多可用 {count} 张参考图。",
+          "video": "参考模式：图片最多 {images} 张，音频 {audios} 个，视频 {videos} 个，合计最多 {total} 个。",
+          "frames": "首尾帧模式与普通参考模式互斥；尾帧需搭配首帧。",
+          "firstFrameOnly": "此模型在这里仅支持一张首帧图片，不支持首尾帧组合。",
+          "audioDuration": "参考音频：每段 {minimum}–{maximum} 秒，总计最多 {total} 秒。",
+          "videoDuration": "参考视频：每段 {minimum}–{maximum} 秒，总计最多 {total} 秒。"
+        },
+        "uploadReference": "上传素材",
+        "chooseProjectReference": "选择项目素材",
+        "referenceLoading": "正在准备参考素材…",
+        "referenceRejected": "此素材已被选中，或不符合当前模型的类型与数量限制。",
+        "uploadOneReference": "请每次上传一个参考素材。",
+        "referenceReadFailed": "无法读取素材，请重试。",
+        "searchReferences": "搜索项目素材",
+        "noCompatibleReferences": "没有符合当前模型和参考数量限制的可用素材。",
+        "loadMoreReferences": "加载更多"
+      },
+      "upload": {
+        "title": "上传任务",
+        "failed": "上传失败",
+        "retryUpload": "重试上传",
+        "retryMaterialize": "重试添加",
+        "dismiss": "关闭",
+        "stage": {
+          "uploading": "上传中…",
+          "materializing": "正在添加到画布…",
+          "ready": "已添加到画布"
+        }
+      },
+      "status": {
+        "pending": "待处理",
+        "queued": "已排队",
+        "processing": "处理中",
+        "succeeded": "已就绪",
+        "failed": "失败",
+        "canceled": "已取消"
+      },
+      "nodeFields": {
+        "generationPrompt": "生成提示词",
+        "generationModel": "生成模型",
+        "generationReferences": "输入资源",
+        "structuredSummary": "结构化内容 · {count} 项",
+        "structuredSummaryUnknown": "结构化内容",
+        "moreItems": "还有 {count} 项"
+      },
+      "generation": {
+        "stage": {
+          "submitted": "已提交",
+          "queued": "排队中",
+          "generating": "生成中",
+          "saving": "保存中"
+        },
+        "progressPercent": "生成中 · {percent}%",
+        "waitedMinutes": "已等待 {minutes} 分钟"
+      },
+      "details": {
+        "contentSection": "文件内容",
+        "contentLoading": "正在加载内容…",
+        "contentLoadFailed": "内容加载失败",
+        "contentRetry": "重试",
+        "empty": "暂无生成信息",
+        "editor": {
+          "newName": "新素材名称",
+          "newNameHint": "为新版本填写不同的名称",
+          "differentNameRequired": "新版本会保留原素材，请使用不同的名称。",
+          "promptPlaceholder": "描述要生成的画面…",
+          "aspectRatio": "画幅",
+          "duration": "时长（秒）",
+          "hint": "修改后点“再来一版”会生成一张新卡片，当前结果保留。把画布上的卡片拖到这里可以加入参考。",
+          "removeReference": "移除参考 {name}",
+          "restoreReference": "恢复参考 {name}",
+          "dropActive": "松开即可把这张卡片加入参考。",
+          "removeAddedReference": "移除这个参考",
+          "modelMissing": "项目还没有配置对应模型，无法再来一版。"
+        }
+      },
+      "folderNavigation": {
+        "root": "项目文件",
+        "back": "返回上一级",
+        "searchPlaceholder": "搜索项目文件",
+        "searchResults": "搜索结果",
+        "noResults": "没有匹配的文件",
+        "loadMore": "加载更多",
+        "loading": "正在加载文件…",
+        "loadFailed": "文件加载失败",
+        "retry": "重试",
+        "openFolder": "打开文件夹",
+        "deleteFolder": "删除文件夹 {path}",
+        "sectionCount": "{count} 项",
+        "directory": "内容管理",
+        "directoryEmpty": "暂无项目文件",
+        "jumpToFolder": "跳转到画布位置",
+        "locateFile": "定位到画布文件"
+      },
+      "nodes": {
+        "resourceCard": {
+          "eyebrow": "创作资源 · {type}",
+          "mediaType": {
+            "text": "文本",
+            "image": "图片",
+            "audio": "音频",
+            "video": "视频"
+          }
+        },
+        "folder": {
+          "eyebrow": "文件夹"
+        }
+      }
+    }
+  }
+}
